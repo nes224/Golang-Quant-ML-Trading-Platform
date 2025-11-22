@@ -5,3 +5,6 @@ pandas
 polars
 plotly
 MetaTrader5
+psycopg2-binary
+python-dotenv
+requests
