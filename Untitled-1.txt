@@ -1,1 +1,98 @@
 https://github.com/nes224/Bot-trading
+
+Rust + Python Hybrid Implementation Plan
+Migrate performance-critical components from Python to Rust while keeping the API layer in Python.
+
+User Review Required
+IMPORTANT
+
+This is a significant architectural change that will:
+
+Require Rust toolchain installation (rustc, cargo)
+Take 2-3 hours to complete
+Provide 50-100x performance improvement for analysis functions
+Maintain full backward compatibility with existing Python code
+Proposed Changes
+Phase 1: Rust Setup & Project Structure
+[NEW] 
+Cargo.toml
+Rust project configuration
+Dependencies: pyo3, numpy, ndarray
+Build settings for Python extension
+[NEW] 
+lib.rs
+Main Rust module
+PyO3 bindings
+Export functions to Python
+Phase 2: Rust Implementation
+[NEW] 
+indicators.rs
+Technical Indicators (Rust)
+
+calculate_ema(prices: Vec<f64>, period: usize) -> Vec<f64>
+calculate_rsi(prices: Vec<f64>, period: usize) -> Vec<f64>
+calculate_atr(high: Vec<f64>, low: Vec<f64>, close: Vec<f64>) -> Vec<f64>
+[NEW] 
+patterns.rs
+Candlestick Pattern Detection (Rust)
+
+detect_hammer(ohlc: &[OHLC]) -> Vec<bool>
+detect_engulfing(ohlc: &[OHLC]) -> Vec<bool>
+detect_morning_star(ohlc: &[OHLC]) -> Vec<bool>
+All 9 candlestick patterns
+[NEW] 
+sr_zones.rs
+S/R Zone Calculation (Rust)
+
+identify_swing_points(high: Vec<f64>, low: Vec<f64>) -> SwingPoints
+cluster_zones(levels: Vec<f64>, threshold: f64) -> Vec<Zone>
+[NEW] 
+signals.rs
+Signal Logic (Rust)
+
+check_smc_signals(data: &MarketData) -> Vec<Signal>
+Fast signal generation based on SMC + RSI
+Phase 3: Python Integration
+[MODIFY] 
+analysis.py
+Import Rust module: import rust_analysis
+Replace 
+calculate_indicators()
+ with Rust version
+Keep high-level logic in Python
+[MODIFY] 
+requirements.txt
+Add maturin for building Rust extensions
+Phase 4: Build & Deploy
+[NEW] 
+build.bat
+cd Trading_Api\rust_analysis
+maturin develop --release
+cd ..\..
+Verification Plan
+Automated Tests
+Performance Benchmark
+
+# Compare Python vs Rust speed
+python benchmark.py
+Expected: Rust 50-100x faster
+
+Correctness Test
+
+# Verify outputs match
+python test_rust_parity.py
+Expected: Identical results
+
+Manual Verification
+Run build_rust.bat to compile Rust module
+Run 
+start_app.bat
+ to start server
+Check dashboard loads faster
+Verify all signals still work correctly
+Timeline
+Phase 1 (Setup): 30 minutes
+Phase 2 (Rust Code): 1.5 hours
+Phase 3 (Integration): 30 minutes
+Phase 4 (Build & Test): 30 minutes
+Total: 2.5-3 hours

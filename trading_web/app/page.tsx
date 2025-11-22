@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [riskPercent, setRiskPercent] = useState('');
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [selectedSymbol, setSelectedSymbol] = useState('GC=F'); // GC=F for Gold, BTC-USD for Bitcoin
 
   // Fetch signal data and connect to WebSocket
   useEffect(() => {
@@ -69,11 +70,11 @@ export default function Dashboard() {
     return () => {
       ws.close();
     };
-  }, []);
+  }, [selectedSymbol]); // Re-fetch when symbol changes
 
   const fetchSignal = async () => {
     try {
-      const res = await fetch('http://localhost:8000/signal?symbol=GC=F');
+      const res = await fetch(`http://localhost:8000/signal?symbol=${selectedSymbol}`);
       const data = await res.json();
       setSignalData(data);
       setLastUpdate(new Date());
@@ -109,7 +110,23 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
       <header className="dashboard-header">
-        <h1>🏆 XAU/USD Trading Dashboard</h1>
+        <div className="header-top">
+          <h1>🏆 Trading Dashboard</h1>
+          <div className="symbol-selector">
+            <button
+              className={`symbol-btn ${selectedSymbol === 'GC=F' ? 'active' : ''}`}
+              onClick={() => setSelectedSymbol('GC=F')}
+            >
+              🥇 XAU/USD
+            </button>
+            <button
+              className={`symbol-btn ${selectedSymbol === 'BTC-USD' ? 'active' : ''}`}
+              onClick={() => setSelectedSymbol('BTC-USD')}
+            >
+              ₿ BTC/USD
+            </button>
+          </div>
+        </div>
         <div className="header-info">
           <span className="live-indicator">🟢 LIVE</span>
           <span className="data-source-badge">📡 {signalData?.data_source || 'YAHOO'}</span>
@@ -159,6 +176,8 @@ export default function Dashboard() {
                       <th>RSI</th>
                       <th>Signal</th>
                       <th>Price Action</th>
+                      <th>Chart Patterns</th>
+                      <th>S/R Zones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -170,6 +189,8 @@ export default function Dashboard() {
                         <td>{data.rsi}</td>
                         <td className={`signal-${data.signal?.toLowerCase()}`}>{data.signal}</td>
                         <td className="pa-cell">{data.price_action}</td>
+                        <td className="chart-pattern-cell">{data.chart_patterns || 'None'}</td>
+                        <td className="sr-zone-cell">{data.sr_zones || 'None'}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,0 +1,14 @@
+C:\Users\Nes\Desktop\bot_trading\Trading_Api\rust_analysis\target\release\deps\serde-72b9b9aeb998cf36.d: C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\Nes\Desktop\bot_trading\Trading_Api\rust_analysis\target\release\build\serde-1c99c9f68dd3d434\out/private.rs
+
+C:\Users\Nes\Desktop\bot_trading\Trading_Api\rust_analysis\target\release\deps\libserde-72b9b9aeb998cf36.rlib: C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\Nes\Desktop\bot_trading\Trading_Api\rust_analysis\target\release\build\serde-1c99c9f68dd3d434\out/private.rs
+
+C:\Users\Nes\Desktop\bot_trading\Trading_Api\rust_analysis\target\release\deps\libserde-72b9b9aeb998cf36.rmeta: C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\Nes\Desktop\bot_trading\Trading_Api\rust_analysis\target\release\build\serde-1c99c9f68dd3d434\out/private.rs
+
+C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\Nes\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+C:\Users\Nes\Desktop\bot_trading\Trading_Api\rust_analysis\target\release\build\serde-1c99c9f68dd3d434\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\Nes\\Desktop\\bot_trading\\Trading_Api\\rust_analysis\\target\\release\\build\\serde-1c99c9f68dd3d434\\out

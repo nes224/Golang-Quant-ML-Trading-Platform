@@ -207,10 +207,18 @@ def get_signal(
 ):
     """
     Returns the latest trading signal and trend status for multiple timeframes (1d, 4h, 1h), adjusted by news sentiment.
+    Results are cached for 5 seconds to improve performance.
     """
+    from cache import cache
     from data_loader import fetch_news
     from analysis import (analyze_sentiment, identify_fvg, identify_order_blocks, 
                          identify_pin_bar, identify_rejection, calculate_confluence_score)
+    
+    # Check cache first
+    cache_key = f"signal:{symbol}"
+    cached_result = cache.get(cache_key)
+    if cached_result is not None:
+        return cached_result
     
     timeframes = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"]
     results = {}
@@ -237,6 +245,15 @@ def get_signal(
             
         df = calculate_indicators(df)
         df = identify_structure(df) # Ensure structure is identified
+        
+        # Identify S/R Zones
+        from sr_zones import identify_sr_zones, get_nearest_sr
+        df, sr_zones = identify_sr_zones(df)
+        
+        # DISABLED: Chart patterns are slow, uncomment to re-enable
+        # from chart_patterns import identify_chart_patterns
+        # df = identify_chart_patterns(df)
+        
         df = identify_fvg(df)
         df = identify_order_blocks(df)
         df = identify_pin_bar(df)
@@ -255,15 +272,45 @@ def get_signal(
         if recent_df['OB_Bullish'].any(): smc_context.append("Bullish OB")
         if recent_df['OB_Bearish'].any(): smc_context.append("Bearish OB")
         
-        # Check Price Action patterns
+        # Check Price Action patterns (Candlestick)
         pa_patterns = []
+        if last_row.get('Hammer', False): pa_patterns.append("Hammer")
+        if last_row.get('Inverted_Hammer', False): pa_patterns.append("Inverted Hammer")
+        if last_row.get('Hanging_Man', False): pa_patterns.append("Hanging Man")
+        if last_row.get('Dragonfly_Doji', False): pa_patterns.append("Dragonfly Doji")
+        if last_row.get('Gravestone_Doji', False): pa_patterns.append("Gravestone Doji")
+        if last_row.get('Bullish_Engulfing', False): pa_patterns.append("Bullish Engulfing")
+        if last_row.get('Bearish_Engulfing', False): pa_patterns.append("Bearish Engulfing")
+        if last_row.get('Morning_Star', False): pa_patterns.append("Morning Star")
+        if last_row.get('Evening_Star', False): pa_patterns.append("Evening Star")
         if last_row.get('Pin_Bar_Bullish', False): pa_patterns.append("Bullish Pin Bar")
         if last_row.get('Pin_Bar_Bearish', False): pa_patterns.append("Bearish Pin Bar")
         if last_row.get('Rejection_Bullish', False): pa_patterns.append("Bullish Rejection")
         if last_row.get('Rejection_Bearish', False): pa_patterns.append("Bearish Rejection")
         
+        # Check Chart Patterns (Multi-swing)
+        chart_patterns = []
+        if last_row.get('Double_Top', False): chart_patterns.append("Double Top")
+        if last_row.get('Double_Bottom', False): chart_patterns.append("Double Bottom")
+        if last_row.get('Head_Shoulders', False): chart_patterns.append("Head & Shoulders")
+        if last_row.get('Inv_Head_Shoulders', False): chart_patterns.append("Inv H&S")
+        if last_row.get('M_Pattern', False): chart_patterns.append("M Pattern")
+        if last_row.get('W_Pattern', False): chart_patterns.append("W Pattern")
+        
         smc_text = ", ".join(smc_context) if smc_context else "None"
         pa_text = ", ".join(pa_patterns) if pa_patterns else "None"
+        chart_text = ", ".join(chart_patterns) if chart_patterns else "None"
+        
+        # Format S/R zones
+        nearest_support = get_nearest_sr(df, sr_zones, 'support')
+        nearest_resistance = get_nearest_sr(df, sr_zones, 'resistance')
+        
+        sr_text = []
+        if nearest_support:
+            sr_text.append(f"S: ${nearest_support['level']} ({nearest_support['strength']}x)")
+        if nearest_resistance:
+            sr_text.append(f"R: ${nearest_resistance['level']} ({nearest_resistance['strength']}x)")
+        sr_display = ", ".join(sr_text) if sr_text else "None"
         
         results[tf] = {
             "price": last_row['Close'],
@@ -271,7 +318,9 @@ def get_signal(
             "rsi": round(last_row['RSI'], 2),
             "signal": signal_map.get(tech_signal, "WAIT"),
             "smc": smc_text,
-            "price_action": pa_text
+            "price_action": pa_text,
+            "chart_patterns": chart_text,
+            "sr_zones": sr_display
         }
 
     # 2. Fundamental Analysis (Sentiment)
@@ -320,7 +369,8 @@ def get_signal(
         recommendation = "⏸️ WAIT - No clear setup"
         final_signal = "WAIT"
             
-    return {
+            
+    result = {
         "symbol": symbol,
         "data_source": Config.DATA_SOURCE,
         "timeframes": results,
@@ -334,6 +384,12 @@ def get_signal(
         "final_signal": final_signal,
         "recommendation": recommendation
     }
+    
+    # Cache the result for 5 seconds
+    cache.set(cache_key, result, ttl_seconds=5)
+    
+    return result
+
 
 @app.get("/chart", response_class=HTMLResponse)
 def get_chart(

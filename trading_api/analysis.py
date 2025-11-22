@@ -3,23 +3,36 @@ import numpy as np
 
 def calculate_indicators(df):
     """
-    Adds technical indicators to the DataFrame using standard pandas.
+    Adds technical indicators to the DataFrame.
+    Uses Rust API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
     
+    # Try Rust API first
+    try:
+        from rust_client import rust_client
+        
+        if rust_client.health_check():
+            result = rust_client.calculate_indicators(df)
+            
+            if result:
+                # Apply Rust results to DataFrame
+                df['EMA_50'] = result['ema_50']
+                df['EMA_200'] = result['ema_200']
+                df['RSI'] = result['rsi']
+                df['ATR'] = result['atr']
+                return df
+    except Exception as e:
+        print(f"Rust API unavailable, using Python fallback: {e}")
+    
+    # Python fallback
     # Trend: EMA
     df['EMA_50'] = df['Close'].ewm(span=50, adjust=False).mean()
     df['EMA_200'] = df['Close'].ewm(span=200, adjust=False).mean()
     
     # Momentum: RSI
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    
-    # Use Wilder's Smoothing for RSI to match standard definition better if needed, 
-    # but simple rolling mean is often sufficient for basic bots. 
-    # Let's use a slightly more accurate Wilder's implementation:
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
     avg_gain = gain.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
@@ -55,19 +68,85 @@ def identify_structure(df, pivot_legs=5):
 
 def check_signals(df):
     """
-    Simple signal logic based on Trend + Rejection.
+    Signal logic based on SMC + RSI with Price Action confirmation.
+    
+    BUY Signal:
+    - Primary: Bullish Order Block OR Bullish FVG detected
+    - Confirmation: RSI < 50 (preferably < 45 for stronger signal)
+    - Trend Filter: Price > EMA 200 (Uptrend)
+    - Bonus: Bullish Price Action pattern (Hammer, Engulfing, etc.)
+    
+    SELL Signal:
+    - Primary: Bearish Order Block OR Bearish FVG detected
+    - Confirmation: RSI > 50 (preferably > 55 for stronger signal)
+    - Trend Filter: Price < EMA 200 (Downtrend)
+    - Bonus: Bearish Price Action pattern (Hanging Man, Evening Star, etc.)
     """
     if df is None or df.empty:
         return df
     
     df['Signal'] = 0 # 0: None, 1: Buy, -1: Sell
     
-    # Logic:
-    # Buy: Price > EMA 200 (Uptrend) AND RSI < 40 (Oversold - Pullback)
-    # Sell: Price < EMA 200 (Downtrend) AND RSI > 60 (Overbought - Pullback)
+    # Check if SMC columns exist
+    has_smc = 'OB_Bullish' in df.columns and 'FVG_Bullish' in df.columns
+    has_pa = 'Pin_Bar_Bullish' in df.columns
     
-    buy_condition = (df['Close'] > df['EMA_200']) & (df['RSI'] < 40)
-    sell_condition = (df['Close'] < df['EMA_200']) & (df['RSI'] > 60)
+    if not has_smc:
+        # Fallback to old logic if SMC not detected
+        buy_condition = (df['Close'] > df['EMA_200']) & (df['RSI'] < 45)
+        sell_condition = (df['Close'] < df['EMA_200']) & (df['RSI'] > 55)
+    else:
+        # NEW LOGIC: SMC + RSI
+        
+        # BUY CONDITIONS
+        # 1. SMC: Bullish Order Block OR Bullish FVG
+        smc_bullish = df.get('OB_Bullish', False) | df.get('FVG_Bullish', False)
+        
+        # 2. RSI: Oversold or neutral (< 50 for entry, < 45 for strong signal)
+        rsi_buy = df['RSI'] < 50
+        
+        # 3. Trend: Uptrend (optional but recommended)
+        trend_up = df['Close'] > df['EMA_200']
+        
+        # 4. Price Action confirmation (optional bonus)
+        if has_pa:
+            pa_bullish = df.get('Pin_Bar_Bullish', False) | df.get('Hammer', False) | \
+                        df.get('Bullish_Engulfing', False) | df.get('Morning_Star', False)
+        else:
+            pa_bullish = False
+        
+        # Combine: SMC + RSI (required), Trend (recommended), PA (bonus)
+        # Strong signal: SMC + RSI + Trend
+        # Moderate signal: SMC + RSI (even against trend if RSI very low)
+        buy_condition = smc_bullish & rsi_buy & trend_up
+        
+        # Alternative: Allow counter-trend if RSI extremely oversold + PA confirmation
+        buy_counter_trend = smc_bullish & (df['RSI'] < 35) & pa_bullish
+        buy_condition = buy_condition | buy_counter_trend
+        
+        # SELL CONDITIONS
+        # 1. SMC: Bearish Order Block OR Bearish FVG
+        smc_bearish = df.get('OB_Bearish', False) | df.get('FVG_Bearish', False)
+        
+        # 2. RSI: Overbought or neutral (> 50 for entry, > 55 for strong signal)
+        rsi_sell = df['RSI'] > 50
+        
+        # 3. Trend: Downtrend
+        trend_down = df['Close'] < df['EMA_200']
+        
+        # 4. Price Action confirmation
+        if has_pa:
+            pa_bearish = df.get('Pin_Bar_Bearish', False) | df.get('Hanging_Man', False) | \
+                        df.get('Bearish_Engulfing', False) | df.get('Evening_Star', False)
+        else:
+            pa_bearish = False
+        
+        # Combine
+        sell_condition = smc_bearish & rsi_sell & trend_down
+        
+        # Alternative: Counter-trend if RSI extremely overbought + PA
+        sell_counter_trend = smc_bearish & (df['RSI'] > 65) & pa_bearish
+        sell_condition = sell_condition | sell_counter_trend
     
     df.loc[buy_condition, 'Signal'] = 1
     df.loc[sell_condition, 'Signal'] = -1
@@ -208,18 +287,20 @@ def identify_order_blocks(df):
     
     return df
 
-def identify_pin_bar(df):
+
+def identify_candlestick_patterns(df):
     """
-    Identifies Pin Bar / Hammer candlestick patterns.
-    Pin Bar = Long wick (rejection), small body.
+    Identifies multiple candlestick patterns including:
+    - Hammer & Inverted Hammer
+    - Hanging Man
+    - Dragonfly & Gravestone Doji
+    - Bullish & Bearish Engulfing
+    - Morning Star & Evening Star
     
-    Returns DataFrame with 'Pin_Bar_Bullish' and 'Pin_Bar_Bearish' columns.
+    Returns DataFrame with pattern columns.
     """
-    if df is None or df.empty:
+    if df is None or df.empty or len(df) < 3:
         return df
-    
-    df['Pin_Bar_Bullish'] = False
-    df['Pin_Bar_Bearish'] = False
     
     # Calculate candle components
     body = abs(df['Close'] - df['Open'])
@@ -227,24 +308,151 @@ def identify_pin_bar(df):
     lower_wick = df[['Open', 'Close']].min(axis=1) - df['Low']
     candle_range = df['High'] - df['Low']
     
-    # Bullish Pin Bar: Long lower wick, small body, close in upper 1/3
-    bullish_pin_mask = (
-        (lower_wick > 2 * body) &  # Lower wick > 2x body
-        (body < 0.3 * candle_range) &  # Small body
-        (df['Close'] > df['Low'] + 0.66 * candle_range)  # Close in upper 1/3
-    )
+    # Determine candle color
+    is_bullish = df['Close'] > df['Open']
+    is_bearish = df['Close'] < df['Open']
     
-    # Bearish Pin Bar: Long upper wick, small body, close in lower 1/3
-    bearish_pin_mask = (
-        (upper_wick > 2 * body) &  # Upper wick > 2x body
-        (body < 0.3 * candle_range) &  # Small body
-        (df['Close'] < df['Low'] + 0.33 * candle_range)  # Close in lower 1/3
-    )
+    # Initialize pattern columns
+    df['Hammer'] = False
+    df['Inverted_Hammer'] = False
+    df['Hanging_Man'] = False
+    df['Dragonfly_Doji'] = False
+    df['Gravestone_Doji'] = False
+    df['Bullish_Engulfing'] = False
+    df['Bearish_Engulfing'] = False
+    df['Morning_Star'] = False
+    df['Evening_Star'] = False
     
-    df.loc[bullish_pin_mask, 'Pin_Bar_Bullish'] = True
-    df.loc[bearish_pin_mask, 'Pin_Bar_Bearish'] = True
+    # 1. HAMMER (Bullish reversal at bottom)
+    # Long lower wick (2x body), small body, close near high
+    hammer_mask = (
+        (lower_wick > 2 * body) &
+        (body < 0.3 * candle_range) &
+        (upper_wick < 0.1 * candle_range) &
+        (df['Close'] > df['Low'] + 0.6 * candle_range)
+    )
+    df.loc[hammer_mask, 'Hammer'] = True
+    
+    # 2. INVERTED HAMMER (Bullish reversal at bottom)
+    # Long upper wick (2x body), small body, close near low
+    inverted_hammer_mask = (
+        (upper_wick > 2 * body) &
+        (body < 0.3 * candle_range) &
+        (lower_wick < 0.1 * candle_range) &
+        (df['Close'] < df['Low'] + 0.4 * candle_range)
+    )
+    df.loc[inverted_hammer_mask, 'Inverted_Hammer'] = True
+    
+    # 3. HANGING MAN (Bearish reversal at top)
+    # Same shape as hammer but appears after uptrend
+    hanging_man_mask = (
+        (lower_wick > 2 * body) &
+        (body < 0.3 * candle_range) &
+        (upper_wick < 0.1 * candle_range) &
+        (df['Close'] > df['Low'] + 0.6 * candle_range)
+    )
+    df.loc[hanging_man_mask, 'Hanging_Man'] = True
+    
+    # 4. DRAGONFLY DOJI (Bullish reversal)
+    # T-shaped: long lower wick, no upper wick, tiny body
+    dragonfly_mask = (
+        (body < 0.05 * candle_range) &
+        (lower_wick > 0.7 * candle_range) &
+        (upper_wick < 0.05 * candle_range)
+    )
+    df.loc[dragonfly_mask, 'Dragonfly_Doji'] = True
+    
+    # 5. GRAVESTONE DOJI (Bearish reversal)
+    # Inverted T-shaped: long upper wick, no lower wick, tiny body
+    gravestone_mask = (
+        (body < 0.05 * candle_range) &
+        (upper_wick > 0.7 * candle_range) &
+        (lower_wick < 0.05 * candle_range)
+    )
+    df.loc[gravestone_mask, 'Gravestone_Doji'] = True
+    
+    # 6. BULLISH ENGULFING (2-candle pattern)
+    # Previous red, current green, current body engulfs previous
+    prev_is_bearish = is_bearish.shift(1)
+    curr_is_bullish = is_bullish
+    bullish_engulfing_mask = (
+        prev_is_bearish &
+        curr_is_bullish &
+        (df['Close'] > df['Open'].shift(1)) &
+        (df['Open'] < df['Close'].shift(1))
+    )
+    df.loc[bullish_engulfing_mask, 'Bullish_Engulfing'] = True
+    
+    # 7. BEARISH ENGULFING (2-candle pattern)
+    # Previous green, current red, current body engulfs previous
+    prev_is_bullish = is_bullish.shift(1)
+    curr_is_bearish = is_bearish
+    bearish_engulfing_mask = (
+        prev_is_bullish &
+        curr_is_bearish &
+        (df['Open'] > df['Close'].shift(1)) &
+        (df['Close'] < df['Open'].shift(1))
+    )
+    df.loc[bearish_engulfing_mask, 'Bearish_Engulfing'] = True
+    
+    # 8. MORNING STAR (3-candle bullish reversal pattern)
+    # Day 1: Long bearish, Day 2: Small body (star), Day 3: Long bullish
+    for i in range(2, len(df)):
+        # Day 1: Bearish candle
+        day1_bearish = df.iloc[i-2]['Close'] < df.iloc[i-2]['Open']
+        day1_body = abs(df.iloc[i-2]['Close'] - df.iloc[i-2]['Open'])
+        
+        # Day 2: Small body (doji/spinning top) - gap down
+        day2_body = abs(df.iloc[i-1]['Close'] - df.iloc[i-1]['Open'])
+        day2_range = df.iloc[i-1]['High'] - df.iloc[i-1]['Low']
+        day2_small = day2_body < 0.3 * day2_range
+        day2_gap_down = df.iloc[i-1]['High'] < df.iloc[i-2]['Close']
+        
+        # Day 3: Bullish candle closing above midpoint of day 1
+        day3_bullish = df.iloc[i]['Close'] > df.iloc[i]['Open']
+        day3_closes_high = df.iloc[i]['Close'] > (df.iloc[i-2]['Open'] + df.iloc[i-2]['Close']) / 2
+        
+        if day1_bearish and day2_small and day3_bullish and day3_closes_high:
+            df.loc[df.index[i], 'Morning_Star'] = True
+    
+    # 9. EVENING STAR (3-candle bearish reversal pattern)
+    # Day 1: Long bullish, Day 2: Small body (star), Day 3: Long bearish
+    for i in range(2, len(df)):
+        # Day 1: Bullish candle
+        day1_bullish = df.iloc[i-2]['Close'] > df.iloc[i-2]['Open']
+        day1_body = abs(df.iloc[i-2]['Close'] - df.iloc[i-2]['Open'])
+        
+        # Day 2: Small body (doji/spinning top) - gap up
+        day2_body = abs(df.iloc[i-1]['Close'] - df.iloc[i-1]['Open'])
+        day2_range = df.iloc[i-1]['High'] - df.iloc[i-1]['Low']
+        day2_small = day2_body < 0.3 * day2_range
+        day2_gap_up = df.iloc[i-1]['Low'] > df.iloc[i-2]['Close']
+        
+        # Day 3: Bearish candle closing below midpoint of day 1
+        day3_bearish = df.iloc[i]['Close'] < df.iloc[i]['Open']
+        day3_closes_low = df.iloc[i]['Close'] < (df.iloc[i-2]['Open'] + df.iloc[i-2]['Close']) / 2
+        
+        if day1_bullish and day2_small and day3_bearish and day3_closes_low:
+            df.loc[df.index[i], 'Evening_Star'] = True
     
     return df
+
+def identify_pin_bar(df):
+    """
+    Legacy function - now redirects to comprehensive pattern detection.
+    Kept for backward compatibility.
+    """
+    if df is None or df.empty:
+        return df
+    
+    df = identify_candlestick_patterns(df)
+    
+    # Map new patterns to old Pin_Bar columns for compatibility
+    df['Pin_Bar_Bullish'] = df['Hammer'] | df['Inverted_Hammer'] | df['Dragonfly_Doji'] | df['Morning_Star'] | df['Bullish_Engulfing']
+    df['Pin_Bar_Bearish'] = df['Hanging_Man'] | df['Gravestone_Doji'] | df['Evening_Star'] | df['Bearish_Engulfing']
+    
+    return df
+
 
 def identify_rejection(df):
     """
@@ -341,13 +549,59 @@ def calculate_confluence_score(row, sentiment_score=0):
         score += 20
         factors.append("SMC zone present")
     
-    # Factor 4: Price Action Pattern (20 points)
-    has_bullish_pa = row.get('Pin_Bar_Bullish', False) or row.get('Rejection_Bullish', False)
-    has_bearish_pa = row.get('Pin_Bar_Bearish', False) or row.get('Rejection_Bearish', False)
+    # Factor 4: Price Action Pattern (20 points) - Candlestick patterns only
+    has_bullish_pa = (
+        row.get('Pin_Bar_Bullish', False) or 
+        row.get('Rejection_Bullish', False) or
+        row.get('Hammer', False) or
+        row.get('Inverted_Hammer', False) or
+        row.get('Dragonfly_Doji', False) or
+        row.get('Morning_Star', False) or
+        row.get('Bullish_Engulfing', False)
+        # Chart patterns disabled for performance
+        # or row.get('Double_Bottom', False) 
+        # or row.get('Inv_Head_Shoulders', False) 
+        # or row.get('W_Pattern', False)
+    )
+    has_bearish_pa = (
+        row.get('Pin_Bar_Bearish', False) or 
+        row.get('Rejection_Bearish', False) or
+        row.get('Hanging_Man', False) or
+        row.get('Gravestone_Doji', False) or
+        row.get('Evening_Star', False) or
+        row.get('Bearish_Engulfing', False)
+        # Chart patterns disabled for performance
+        # or row.get('Double_Top', False) 
+        # or row.get('Head_Shoulders', False) 
+        # or row.get('M_Pattern', False)
+    )
     
     if (direction == "BUY" and has_bullish_pa) or (direction == "SELL" and has_bearish_pa):
         score += 20
-        factors.append("Price Action pattern")
+        # List specific patterns found
+        pattern_names = []
+        if direction == "BUY":
+            if row.get('Hammer'): pattern_names.append("Hammer")
+            if row.get('Inverted_Hammer'): pattern_names.append("Inverted Hammer")
+            if row.get('Dragonfly_Doji'): pattern_names.append("Dragonfly Doji")
+            if row.get('Morning_Star'): pattern_names.append("Morning Star")
+            if row.get('Bullish_Engulfing'): pattern_names.append("Bullish Engulfing")
+            if row.get('Double_Bottom'): pattern_names.append("Double Bottom")
+            if row.get('Inv_Head_Shoulders'): pattern_names.append("Inv H&S")
+            if row.get('W_Pattern'): pattern_names.append("W Pattern")
+        else:
+            if row.get('Hanging_Man'): pattern_names.append("Hanging Man")
+            if row.get('Gravestone_Doji'): pattern_names.append("Gravestone Doji")
+            if row.get('Evening_Star'): pattern_names.append("Evening Star")
+            if row.get('Bearish_Engulfing'): pattern_names.append("Bearish Engulfing")
+            if row.get('Double_Top'): pattern_names.append("Double Top")
+            if row.get('Head_Shoulders'): pattern_names.append("H&S")
+            if row.get('M_Pattern'): pattern_names.append("M Pattern")
+        
+        if pattern_names:
+            factors.append(f"PA: {', '.join(pattern_names)}")
+        else:
+            factors.append("Price Action pattern")
     
     # Factor 5: Sentiment Alignment (20 points)
     if direction == "BUY" and sentiment_score >= -0.2:  # Neutral or positive for buy

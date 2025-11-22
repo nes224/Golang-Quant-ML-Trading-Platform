@@ -1,0 +1,1 @@
+C:\Users\Nes\Desktop\bot_trading\trading_api\rust_analysis\target\release\rust_analysis.exe: C:\Users\Nes\Desktop\bot_trading\trading_api\rust_analysis\src\indicators.rs C:\Users\Nes\Desktop\bot_trading\trading_api\rust_analysis\src\main.rs C:\Users\Nes\Desktop\bot_trading\trading_api\rust_analysis\src\patterns.rs
