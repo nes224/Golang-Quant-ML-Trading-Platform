@@ -199,12 +199,13 @@ export default function Dashboard() {
                       <th>RSI</th>
                       <th>Signal</th>
                       <th>Price Action</th>
-                      <th>Chart Patterns</th>
                       <th>S/R Zones</th>
+                      <th>FVG Zones</th>
+                      <th>OB Zones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {['1d', '4h', '1h', '30m', '15m', '5m', '1m'].map((tf) => {
+                    {['1d', '4h', '1h', '30m', '15m'].map((tf) => {
                       const data = signalData.timeframes[tf];
                       if (!data) return null;
                       return (
@@ -215,8 +216,9 @@ export default function Dashboard() {
                           <td>{data.rsi}</td>
                           <td className={`signal-${data.signal?.toLowerCase()}`}>{data.signal}</td>
                           <td className="pa-cell">{data.price_action}</td>
-                          <td className="chart-pattern-cell">{data.chart_patterns || 'None'}</td>
                           <td className="sr-zone-cell">{data.sr_zones || 'None'}</td>
+                          <td className="fvg-zone-cell">{data.fvg_zones || 'None'}</td>
+                          <td className="ob-zone-cell">{data.ob_zones || 'None'}</td>
                         </tr>
                       );
                     })}

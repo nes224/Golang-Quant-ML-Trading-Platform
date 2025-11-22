@@ -1,11 +1,11 @@
 services:
   postgres:
-    image: postgres:15
+    image: postgres:latest
     container_name: trading_bot_db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-trading_bot}
-      POSTGRES_USER: ${DB_USER:-trading_user}
+      POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
     ports:
       - "${DB_PORT:-5432}:5432"
@@ -13,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./Trading_Api/db_schema.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-trading_user}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -7,7 +7,7 @@ import asyncio
 class DataManager:
     def __init__(self, symbol="GC=F"):
         self.symbol = symbol
-        self.timeframes = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"]
+        self.timeframes = ["4h", "1h", "30m", "15m"]
         self.data = {} # Stores DataFrame for each timeframe
         self.last_update_time = {} # Stores last update timestamp for each TF
         self.initialized = False

@@ -5,6 +5,12 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, date
 from typing import Optional, List, Dict
 import json
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load .env explicitly from the same directory
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 class DatabaseManager:
     """
@@ -23,12 +29,12 @@ class DatabaseManager:
                 host=os.getenv('DB_HOST', 'localhost'),
                 port=os.getenv('DB_PORT', '5432'),
                 database=os.getenv('DB_NAME', 'trading_bot'),
-                user=os.getenv('DB_USER', 'trading_user'),
+                user=os.getenv('DB_USER', 'postgres'),
                 password=os.getenv('DB_PASSWORD', 'your_secure_password_here')
             )
-            print("✅ Database connection pool initialized")
+            print("[OK] Database connection pool initialized")
         except Exception as e:
-            print(f"❌ Failed to initialize database pool: {e}")
+            print(f"[ERROR] Failed to initialize database pool: {e}")
             raise
     
     def get_connection(self):
@@ -90,11 +96,11 @@ class DatabaseManager:
                 ))
                 trade_id = cur.fetchone()[0]
                 conn.commit()
-                print(f"✅ Trade #{trade_id} created: {trade_data['direction']} {trade_data['symbol']} @ {trade_data['entry_price']}")
+                print(f"[OK] Trade #{trade_id} created: {trade_data['direction']} {trade_data['symbol']} @ {trade_data['entry_price']}")
                 return trade_id
         except Exception as e:
             conn.rollback()
-            print(f"❌ Error creating trade: {e}")
+            print(f"[ERROR] Error creating trade: {e}")
             raise
         finally:
             self.return_connection(conn)
@@ -143,7 +149,7 @@ class DatabaseManager:
                 ))
                 conn.commit()
                 
-                print(f"✅ Trade #{trade_id} closed: P/L = ${profit_loss:.2f} ({profit_loss_pips:.2f} pips)")
+                print(f"[OK] Trade #{trade_id} closed: P/L = ${profit_loss:.2f} ({profit_loss_pips:.2f} pips)")
                 
                 # Update performance summary
                 self._update_performance_summary(date.today())
@@ -155,7 +161,7 @@ class DatabaseManager:
                 }
         except Exception as e:
             conn.rollback()
-            print(f"❌ Error closing trade: {e}")
+            print(f"[ERROR] Error closing trade: {e}")
             raise
         finally:
             self.return_connection(conn)
@@ -276,6 +282,113 @@ class DatabaseManager:
                 """
                 cur.execute(query)
                 return cur.fetchone()
+        finally:
+            self.return_connection(conn)
+    
+    # ==================== MARKET DATA CACHING ====================
+    
+    def cache_market_data(self, symbol: str, timeframe: str, df) -> None:
+        """
+        Cache OHLC data to database for faster access.
+        
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe (1d, 4h, 1h, etc.)
+            df: DataFrame with OHLC data
+        """
+        if df is None or df.empty:
+            return
+            
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Prepare data for bulk insert
+                data_to_insert = []
+                for idx, row in df.iterrows():
+                    data_to_insert.append((
+                        symbol,
+                        timeframe,
+                        idx,  # timestamp
+                        float(row['Open']),
+                        float(row['High']),
+                        float(row['Low']),
+                        float(row['Close']),
+                        int(row.get('Volume', 0))
+                    ))
+                
+                # Bulk insert with ON CONFLICT DO NOTHING
+                insert_query = """
+                    INSERT INTO market_data (symbol, timeframe, timestamp, open, high, low, close, volume)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (symbol, timeframe, timestamp) DO NOTHING
+                """
+                cur.executemany(insert_query, data_to_insert)
+                conn.commit()
+                print(f"[OK] Cached {len(data_to_insert)} candles for {symbol} {timeframe}")
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to cache market data: {e}")
+        finally:
+            self.return_connection(conn)
+    
+    def get_cached_market_data(self, symbol: str, timeframe: str, limit: int = 500):
+        """
+        Get cached OHLC data from database.
+        
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            limit: Number of candles to retrieve
+            
+        Returns:
+            DataFrame with OHLC data or None if not found
+        """
+        import pandas as pd
+        
+        conn = self.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = """
+                    SELECT timestamp, open, high, low, close, volume
+                    FROM market_data
+                    WHERE symbol = %s AND timeframe = %s
+                    ORDER BY timestamp DESC
+                    LIMIT %s
+                """
+                cur.execute(query, (symbol, timeframe, limit))
+                rows = cur.fetchall()
+                
+                if not rows:
+                    return None
+                
+                # Convert to DataFrame
+                df = pd.DataFrame(rows)
+                df.set_index('timestamp', inplace=True)
+                df.index = pd.to_datetime(df.index)
+                df.sort_index(inplace=True)
+                
+                # Rename columns to match expected format
+                df.rename(columns={
+                    'open': 'Open',
+                    'high': 'High',
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume'
+                }, inplace=True)
+
+                # Convert numeric columns to float (handle Decimal from DB)
+                numeric_cols = ['Open', 'High', 'Low', 'Close']
+                for col in numeric_cols:
+                    df[col] = df[col].astype(float)
+                
+                # Volume should be int
+                df['Volume'] = df['Volume'].astype(int)
+                
+                print(f"[OK] Retrieved {len(df)} cached candles for {symbol} {timeframe}")
+                return df
+        except Exception as e:
+            print(f"[ERROR] Failed to get cached data: {e}")
+            return None
         finally:
             self.return_connection(conn)
 

@@ -38,12 +38,30 @@ CREATE TABLE IF NOT EXISTS performance_summary (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Table: market_data
+-- Stores cached OHLC data for faster access
+CREATE TABLE IF NOT EXISTS market_data (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    timeframe VARCHAR(10) NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    open DECIMAL(12, 4) NOT NULL,
+    high DECIMAL(12, 4) NOT NULL,
+    low DECIMAL(12, 4) NOT NULL,
+    close DECIMAL(12, 4) NOT NULL,
+    volume BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(symbol, timeframe, timestamp)
+);
+
 -- Indexes for performance optimization
 CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
 CREATE INDEX IF NOT EXISTS idx_trades_timestamp_open ON trades(timestamp_open);
 CREATE INDEX IF NOT EXISTS idx_trades_timestamp_close ON trades(timestamp_close);
 CREATE INDEX IF NOT EXISTS idx_performance_date ON performance_summary(date);
+CREATE INDEX IF NOT EXISTS idx_market_data_symbol_tf ON market_data(symbol, timeframe);
+CREATE INDEX IF NOT EXISTS idx_market_data_timestamp ON market_data(timestamp);
 
 -- Trigger to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

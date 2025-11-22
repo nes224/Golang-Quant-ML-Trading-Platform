@@ -230,18 +230,14 @@ def get_signal(
     
     global data_manager
     
+    global data_manager
+    
     # Check cache first
-    cache_key = f"signal:{symbol}"
+    cache_key = f"signal_{symbol}"
     cached_result = cache.get(cache_key)
-    if cached_result is not None:
+    if cached_result:
         return cached_result
-    
-    timeframes = ["1d", "4h", "1h", "30m", "15m", "5m", "1m"]
-    results = {}
-    
-    signal_map = {1: "BUY", -1: "SELL", 0: "WAIT"}
 
-    # 1. Determine Global Trend (H4) first for Sniper Mode
     global_trend = "NEUTRAL"
     
     # Try to get H4 data from DataManager
@@ -304,6 +300,10 @@ def get_signal(
         if df is None or df.empty:
             return tf, {"error": "Data not available"}, None
             
+        # OPTIMIZATION: Limit to last 500 candles to speed up calculation
+        if len(df) > 500:
+            df = df.tail(500).copy()
+            
         df = calculate_indicators(df)
         df = identify_structure(df) 
         
@@ -321,10 +321,12 @@ def get_signal(
         trend = "UP" if last_row['Close'] > last_row['EMA_200'] else "DOWN"
         tech_signal = last_row['Signal'] # 1, -1, 0
         
-        # --- SNIPER MODE FILTER ---
-        # For small timeframes, filter signals based on Global Trend (H4) and Indicators
+        # Convert numeric signal to text
+        signal_map = {1: "BUY", -1: "SELL", 0: "WAIT"}
         final_signal = signal_map.get(tech_signal, "WAIT")
         
+        # --- SNIPER MODE FILTER ---
+        # For small timeframes, filter signals based on Global Trend (H4) and Indicators
         if tf in ["1m", "5m", "15m", "30m"]:
             # 1. Trend Filter
             if bias_trend == "UP" and tech_signal == -1:
@@ -379,6 +381,60 @@ def get_signal(
         
         # Format S/R zones
         nearest_support = get_nearest_sr(df, sr_zones, 'support')
+        nearest_resistance = get_nearest_sr(df, sr_zones, 'resistance')
+        
+        sr_text = []
+        if nearest_support:
+            s_min = nearest_support.get('bottom', nearest_support['level'])
+            s_max = nearest_support.get('top', nearest_support['level'])
+            sr_text.append(f"S: {s_min}-{s_max} ({nearest_support['strength']}x)")
+            
+        if nearest_resistance:
+            r_min = nearest_resistance.get('bottom', nearest_resistance['level'])
+            r_max = nearest_resistance.get('top', nearest_resistance['level'])
+            sr_text.append(f"R: {r_min}-{r_max} ({nearest_resistance['strength']}x)")
+            
+        sr_display = ", ".join(sr_text) if sr_text else "None"
+        
+        # Extract FVG zones
+        fvg_zones_display = []
+        if hasattr(df, 'attrs') and 'fvg_zones' in df.attrs:
+            for zone in df.attrs['fvg_zones'][-3:]:  # Last 3 zones
+                zone_type = "🟢" if zone['zone_type'] == 'bullish' else "🔴"
+                fvg_zones_display.append(f"{zone_type} {zone['bottom']:.2f}-{zone['top']:.2f}")
+        
+        # Extract OB zones
+        ob_zones_display = []
+        if hasattr(df, 'attrs') and 'ob_zones' in df.attrs:
+            for zone in df.attrs['ob_zones'][-3:]:  # Last 3 zones
+                zone_type = "🟢" if zone['zone_type'] == 'bullish' else "🔴"
+                ob_zones_display.append(f"{zone_type} {zone['bottom']:.2f}-{zone['top']:.2f}")
+        
+        result_data = {
+            "price": last_row['Close'],
+            "trend": trend,
+            "rsi": round(last_row['RSI'], 2),
+            "signal": final_signal,
+            "smc": smc_text,
+            "price_action": pa_text,
+            "chart_patterns": chart_text,
+            "sr_zones": sr_display,
+            "fvg_zones": " | ".join(fvg_zones_display) if fvg_zones_display else "None",
+            "ob_zones": " | ".join(ob_zones_display) if ob_zones_display else "None"
+        }
+        
+        return tf, result_data, df
+
+    # Use ThreadPoolExecutor for parallel fetching and processing
+    # OPTIMIZATION: Reduced timeframes to save resources
+    timeframes = ["1d", "4h", "1h", "30m", "15m"] 
+    results = {}
+    df_4h_cached = None
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_tf = {executor.submit(process_timeframe, tf, global_trend): tf for tf in timeframes}
+        for future in concurrent.futures.as_completed(future_to_tf):
+            tf = future_to_tf[future]
             try:
                 tf_result, data, df_result = future.result()
                 results[tf_result] = data
@@ -391,63 +447,32 @@ def get_signal(
                 print(f'{tf} generated an exception: {exc}')
                 results[tf] = {"error": str(exc)}
 
-    # 2. Fundamental Analysis (Sentiment)
-    news = fetch_news(symbol)
-    sentiment_score = analyze_sentiment(news)
+    # 2. Fundamental Analysis (Sentiment) - DISABLED for speed
+    # news = fetch_news(symbol)
+    # sentiment_score = analyze_sentiment(news)
+    sentiment_score = 0
+    sentiment_text = "NEUTRAL (Disabled)"
     
-    sentiment_text = "NEUTRAL"
-    if sentiment_score > 0.2:
-        sentiment_text = "BULLISH"
-    elif sentiment_score < -0.2:
-        sentiment_text = "BEARISH"
-    
-    # 3. Confluence Analysis for Primary Timeframe (4h)
-    # Reuse cached 4h data if available, otherwise fetch (fallback)
-    if df_4h_cached is not None and not df_4h_cached.empty:
-        df_4h = df_4h_cached
-        # Data is already processed in the loop above
-        confluence = calculate_confluence_score(df_4h.iloc[-1], sentiment_score)
-    else:
-        # Fallback if 4h failed in loop
-        # Try DataManager first
-        # Try DataManager first
-        if data_manager and data_manager.symbol == symbol and data_manager.initialized:
-            df_4h = data_manager.get_data("4h")
-            if df_4h is not None: df_4h = df_4h.copy()
-        else:
-            df_4h = fetch_data(symbol, period="3mo", interval="4h")
-            
-        if df_4h is not None and not df_4h.empty:
-            df_4h = calculate_indicators(df_4h)
-            df_4h = identify_structure(df_4h)
-            df_4h = identify_fvg(df_4h)
-            df_4h = identify_order_blocks(df_4h)
-            df_4h = identify_pin_bar(df_4h)
-            df_4h = identify_rejection(df_4h)
-            df_4h = check_signals(df_4h)
-            confluence = calculate_confluence_score(df_4h.iloc[-1], sentiment_score)
-        else:
-            confluence = {"score": 0, "grade": "F", "factors": ["No data"], "direction": "WAIT"}
-        
-    # 4. Simple Confluence Logic (Summary)
+    # 3. Confluence Analysis (Simplified)
     # We prioritize Daily Trend and 4h Structure
     daily_trend = results.get("1d", {}).get("trend", "UNKNOWN")
     h4_signal = results.get("4h", {}).get("signal", "WAIT")
     
-    final_signal = confluence.get("direction", "WAIT")
+    # Simple logic without heavy confluence calculation
+    final_signal = h4_signal
+    if daily_trend == "UP" and h4_signal == "SELL":
+        final_signal = "WAIT (Counter-Trend)"
+    elif daily_trend == "DOWN" and h4_signal == "BUY":
+        final_signal = "WAIT (Counter-Trend)"
+        
+    confluence = {
+        "score": 50,
+        "grade": "C",
+        "factors": ["Technical Only"],
+        "direction": final_signal
+    }
     
-    # Enhanced recommendation based on confluence score
-    if confluence["score"] >= 80:
-        recommendation = f"🔥 STRONG {final_signal} - Grade {confluence['grade']} ({confluence['score']}/100)"
-    elif confluence["score"] >= 60:
-        recommendation = f"✅ Good {final_signal} - Grade {confluence['grade']} ({confluence['score']}/100)"
-    elif confluence["score"] >= 40:
-        recommendation = f"⚠️ Moderate {final_signal} - Grade {confluence['grade']} ({confluence['score']}/100)"
-    elif confluence["score"] >= 20:
-        recommendation = f"❌ Weak {final_signal} - Grade {confluence['grade']} ({confluence['score']}/100)"
-    else:
-        recommendation = "⏸️ WAIT - No clear setup"
-        final_signal = "WAIT"
+    recommendation = f"📊 {final_signal} (Tech Only)"
             
             
     result = {
@@ -465,8 +490,8 @@ def get_signal(
         "recommendation": recommendation
     }
     
-    # Cache the result for 5 seconds
-    cache.set(cache_key, result, ttl_seconds=5)
+    # Cache the result for 30 seconds (increased from 5)
+    cache.set(cache_key, result, ttl_seconds=30)
     
     return result
 

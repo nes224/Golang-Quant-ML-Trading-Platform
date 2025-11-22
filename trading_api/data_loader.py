@@ -155,13 +155,122 @@ def fetch_data_mt5(symbol="XAUUSD", period="1y", interval="1d"):
         print(f"Error fetching data from MT5: {e}")
         return None
 
-def fetch_data(symbol="GC=F", period="1y", interval="1d"):
-    if Config.DATA_SOURCE == "MT5":
-        # MT5 usually uses XAUUSD instead of GC=F
-        mt5_symbol = "XAUUSD" if symbol == "GC=F" else symbol
-        return fetch_data_mt5(mt5_symbol, period, interval)
-    else:
-        return fetch_data_yahoo(symbol, period, interval)
+def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
+    """
+    Fetch OHLC data with Smart Incremental Sync.
+    
+    Logic:
+    1. Get Cache
+    2. If Cache exists:
+       - Check last timestamp
+       - Fetch ONLY new data from Source (start=last_timestamp)
+       - Merge Cache + New Data
+       - Save New Data to DB
+    3. If No Cache:
+       - Fetch full history
+       - Save to DB
+    """
+    cached_df = None
+    last_timestamp = None
+    
+    # 1. Try to get from cache
+    if use_cache:
+        try:
+            from db_manager import get_db_manager
+            db = get_db_manager()
+            cached_df = db.get_cached_market_data(symbol, interval, limit=5000) # Get more history
+            
+            if cached_df is not None and not cached_df.empty:
+                last_timestamp = cached_df.index[-1]
+                # print(f"[CACHE] Found data up to {last_timestamp}")
+        except Exception as e:
+            print(f"[CACHE ERROR] {e}")
+    
+    # 2. Fetch from Source
+    new_df = None
+    try:
+        if Config.DATA_SOURCE == "MT5":
+            # MT5 Logic (Simplified for now - usually fetches latest N bars)
+            mt5_symbol = "XAUUSD" if symbol == "GC=F" else symbol
+            new_df = fetch_data_mt5(mt5_symbol, period, interval)
+        else:
+            # Yahoo Finance Logic
+            import yfinance as yf
+            from datetime import timedelta
+            
+            # If we have cache, only fetch missing data
+            if last_timestamp:
+                # Add small buffer to ensure overlap/continuity
+                start_date = last_timestamp.date()
+                # yfinance requires start date string
+                new_df = yf.download(symbol, start=str(start_date), interval=interval, progress=False)
+                
+                # Handle MultiIndex
+                if isinstance(new_df.columns, pd.MultiIndex):
+                    new_df.columns = new_df.columns.get_level_values(0)
+                
+                # Resample if needed (e.g. 4h)
+                if interval == "4h":
+                    # Logic similar to fetch_data_yahoo but for partial data
+                    # For simplicity, we might re-fetch a bit more history for 4h to ensure correct resampling
+                    # But for 1d, 1h, etc. it works fine.
+                    pass 
+                    
+                if not new_df.empty:
+                    # Filter out data we already have (keep only > last_timestamp)
+                    new_df = new_df[new_df.index > last_timestamp]
+                    if not new_df.empty:
+                        print(f"[SYNC] Fetched {len(new_df)} new candles for {symbol}")
+                    else:
+                        # print("[SYNC] Data is up to date.")
+                        pass
+            else:
+                # No cache, fetch full period
+                new_df = fetch_data_yahoo(symbol, period, interval)
+                
+    except Exception as e:
+        print(f"[FETCH ERROR] {e}")
+
+    # 3. Merge and Update Cache
+    final_df = cached_df
+    
+    if new_df is not None and not new_df.empty:
+        # Cache the NEW data
+        if use_cache:
+            try:
+                from db_manager import get_db_manager
+                db = get_db_manager()
+                
+                # Prepare for caching
+                df_to_cache = new_df.copy()
+                if 'Date' in df_to_cache.columns:
+                    df_to_cache.set_index('Date', inplace=True)
+                
+                # Ensure index is datetime
+                if not isinstance(df_to_cache.index, pd.DatetimeIndex):
+                     df_to_cache.index = pd.to_datetime(df_to_cache.index)
+
+                db.cache_market_data(symbol, interval, df_to_cache)
+            except Exception as e:
+                print(f"[CACHE SAVE ERROR] {e}")
+        
+        # Merge logic
+        if cached_df is not None:
+            # Ensure both have DatetimeIndex
+            if not isinstance(cached_df.index, pd.DatetimeIndex):
+                cached_df.index = pd.to_datetime(cached_df.index)
+            
+            if not isinstance(new_df.index, pd.DatetimeIndex):
+                new_df.index = pd.to_datetime(new_df.index)
+                
+            # Combine and deduplicate
+            final_df = pd.concat([cached_df, new_df])
+            final_df = final_df[~final_df.index.duplicated(keep='last')]
+            final_df.sort_index(inplace=True)
+        else:
+            final_df = new_df
+
+    return final_df
 
 def fetch_news(symbol="GC=F"):
     """

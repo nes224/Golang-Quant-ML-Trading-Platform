@@ -1,24 +1,36 @@
+# Environment variables - CRITICAL
+.env
+.env.*
+!.env.example
+Trading_Api/.env
+Trading_Api/.env.*
+Trading_Api/secrets.py
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.sqlite
+*.db
+postgres_data/
+
 # Python
 __pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+env/
+
+# Node/Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Environment variables
-.env
-.env.local
-
-# Sensitive data
-config.py
-*.key
-*.pem
-
-# Cache
-.cache/
-*.cache

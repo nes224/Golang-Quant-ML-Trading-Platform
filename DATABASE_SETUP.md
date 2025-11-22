@@ -48,7 +48,7 @@ print(stats)
 
 ## Step 6: (Optional) Access PostgreSQL CLI
 ```bash
-docker exec -it trading_bot_db psql -U trading_user -d trading_bot
+docker exec -it trading_bot_db psql -U postgres -d trading_bot
 ```
 
 Common commands:

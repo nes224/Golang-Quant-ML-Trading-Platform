@@ -84,8 +84,8 @@ def get_dxy_analysis(timeframe: str = "1d") -> Dict:
         Dictionary with DXY analysis
     """
     try:
-        # Fetch DXY data
-        df = fetch_data("DX-Y.NYB", period="3mo", interval=timeframe)
+        # Fetch DXY data - Use UUP (Dollar ETF) for faster data
+        df = fetch_data("UUP", period="3mo", interval=timeframe)
         
         if df is None or df.empty:
             return {
