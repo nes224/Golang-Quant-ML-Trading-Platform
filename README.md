@@ -13,6 +13,7 @@ A high-performance trading bot for XAU/USD (Gold) featuring Smart Money Concepts
 - **Python 3.10+**
 - **Node.js 18+**
 - **PostgreSQL 14+** (Local installation recommended)
+- **Go 1.21+** (For high-performance analysis API)
 
 ## 📦 Installation
 

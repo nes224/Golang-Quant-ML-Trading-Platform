@@ -4,17 +4,17 @@ import numpy as np
 def calculate_indicators(df):
     """
     Adds technical indicators to the DataFrame.
-    Uses Rust API for performance, falls back to Python if unavailable.
+    Uses Go API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
     
-    # Try Rust API first
+    # Try Go API first
     try:
-        from rust_client import rust_client
+        from go_client import go_client
         
-        if rust_client.health_check():
-            result = rust_client.calculate_indicators(df)
+        if go_client.health_check():
+            result = go_client.calculate_indicators(df)
             
             if result:
                 # Apply Rust results to DataFrame
@@ -24,7 +24,7 @@ def calculate_indicators(df):
                 df['ATR'] = result['atr']
                 return df
     except Exception as e:
-        print(f"Rust API unavailable, using Python fallback: {e}")
+        print(f"Go API unavailable, using Python fallback: {e}")
     
     # Python fallback
     # Trend: EMA
@@ -54,17 +54,17 @@ def calculate_indicators(df):
 def identify_structure(df, pivot_legs=5):
     """
     Identifies Swing Highs and Swing Lows for Support & Resistance.
-    Uses Rust API for performance, falls back to Python if unavailable.
+    Uses Go API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
 
-    # Try Rust API first
+    # Try Go API first
     try:
-        from rust_client import rust_client
+        from go_client import go_client
         
-        if rust_client.health_check():
-            result = rust_client.analyze_smc(df)
+        if go_client.health_check():
+            result = go_client.analyze_smc(df)
             
             if result:
                 df['Swing_High'] = result['swing_highs']
@@ -73,7 +73,7 @@ def identify_structure(df, pivot_legs=5):
                 df['Is_Swing_Low'] = [x is not None for x in result['swing_lows']]
                 return df
     except Exception as e:
-        print(f"Rust API unavailable for structure, using Python fallback: {e}")
+        print(f"Go API unavailable for structure, using Python fallback: {e}")
 
     # Python fallback
     df['Swing_High'] = df['High'].rolling(window=pivot_legs*2+1, center=True).max()
@@ -221,7 +221,7 @@ def analyze_sentiment(news_items):
 def identify_fvg(df):
     """
     Identifies Fair Value Gaps (FVG).
-    Uses Rust API for performance, falls back to Python if unavailable.
+    Uses Go API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
@@ -232,12 +232,12 @@ def identify_fvg(df):
     if len(df) < 3:
         return df
 
-    # Try Rust API first
+    # Try Go API first
     try:
-        from rust_client import rust_client
+        from go_client import go_client
         
-        if rust_client.health_check():
-            result = rust_client.analyze_smc(df)
+        if go_client.health_check():
+            result = go_client.analyze_smc(df)
             
             if result:
                 df['FVG_Bullish'] = result['fvg_bullish']
@@ -251,7 +251,7 @@ def identify_fvg(df):
                 
                 return df
     except Exception as e:
-        print(f"Rust API unavailable for FVG, using Python fallback: {e}")
+        print(f"Go API unavailable for FVG, using Python fallback: {e}")
 
     # Python fallback
     high_shift_2 = df['High'].shift(2)
@@ -270,7 +270,7 @@ def identify_fvg(df):
 def identify_order_blocks(df):
     """
     Identifies simple Order Blocks (OB).
-    Uses Rust API for performance, falls back to Python if unavailable.
+    Uses Go API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
@@ -278,12 +278,12 @@ def identify_order_blocks(df):
     df['OB_Bullish'] = False
     df['OB_Bearish'] = False
     
-    # Try Rust API first
+    # Try Go API first
     try:
-        from rust_client import rust_client
+        from go_client import go_client
         
-        if rust_client.health_check():
-            result = rust_client.analyze_smc(df)
+        if go_client.health_check():
+            result = go_client.analyze_smc(df)
             
             if result:
                 df['OB_Bullish'] = result['ob_bullish']
@@ -297,7 +297,7 @@ def identify_order_blocks(df):
                 
                 return df
     except Exception as e:
-        print(f"Rust API unavailable for OB, using Python fallback: {e}")
+        print(f"Go API unavailable for OB, using Python fallback: {e}")
     
     # Python fallback
     prev_open = df['Open'].shift(1)
@@ -323,7 +323,7 @@ def identify_order_blocks(df):
 
 def identify_candlestick_patterns(df):
     """
-    Identifies multiple candlestick patterns using Rust API.
+    Identifies multiple candlestick patterns using Go API.
     Falls back to Python if unavailable.
     """
     if df is None or df.empty or len(df) < 3:
@@ -340,12 +340,12 @@ def identify_candlestick_patterns(df):
     for p in patterns:
         df[p] = False
         
-    # Try Rust API first
+    # Try Go API first
     try:
-        from rust_client import rust_client
+        from go_client import go_client
         
-        if rust_client.health_check():
-            result = rust_client.detect_patterns(df)
+        if go_client.health_check():
+            result = go_client.detect_patterns(df)
             
             if result:
                 df['Hammer'] = result['hammer']
@@ -359,7 +359,7 @@ def identify_candlestick_patterns(df):
                 df['Evening_Star'] = result['evening_star']
                 return df
     except Exception as e:
-        print(f"Rust API unavailable for patterns, using Python fallback: {e}")
+        print(f"Go API unavailable for patterns, using Python fallback: {e}")
 
     # Python fallback (Simplified for brevity as Rust is primary)
     # Calculate candle components

@@ -8,8 +8,8 @@ echo   Trading Bot - Multi-Service Startup
 echo ========================================
 
 echo.
-echo [1/3] Starting Rust Analysis Service (Port 8001)...
-start "Rust Analysis API" cmd /k start_rust.bat
+echo [1/3] Starting Golang Analysis Service (Port 8001)...
+start "Golang Analysis API" cmd /k start_go.bat
 
 timeout /t 5
 
@@ -26,7 +26,7 @@ start "Frontend" cmd /k "cd trading_web && npm.cmd run dev"
 echo.
 echo ========================================
 echo   All services started!
-echo   - Rust API: http://localhost:8001
+echo   - Golang API: http://localhost:8001
 echo   - Python API: http://localhost:8000
 echo   - Frontend: http://localhost:3000
 echo ========================================

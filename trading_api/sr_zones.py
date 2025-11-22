@@ -3,18 +3,18 @@ import numpy as np
 
 def identify_sr_zones(df, zone_threshold=0.002, min_touches=2):
     """
-    Identifies Support and Resistance Zones using Rust API.
+    Identifies Support and Resistance Zones using Go API.
     Falls back to Python if unavailable.
     """
     if df is None or df.empty or len(df) < 20:
         return df, []
     
-    # Try Rust API first
+    # Try Go API first
     try:
-        from rust_client import rust_client
+        from go_client import go_client
         
-        if rust_client.health_check():
-            result = rust_client.analyze_smc(df)
+        if go_client.health_check():
+            result = go_client.analyze_smc(df)
             
             if result and 'sr_zones' in result:
                 # Normalize keys for compatibility (Rust uses zone_type, Python uses type)
@@ -32,7 +32,7 @@ def identify_sr_zones(df, zone_threshold=0.002, min_touches=2):
                 
                 return df, zones
     except Exception as e:
-        print(f"Rust API unavailable for S/R zones, using Python fallback: {e}")
+        print(f"Go API unavailable for S/R zones, using Python fallback: {e}")
 
     # Python fallback
     # Get all swing points
