@@ -3,20 +3,38 @@ import numpy as np
 
 def identify_sr_zones(df, zone_threshold=0.002, min_touches=2):
     """
-    Identifies Support and Resistance Zones based on price clustering.
-    
-    Args:
-        df: DataFrame with OHLC data
-        zone_threshold: Price tolerance for zone (default 0.2% of price)
-        min_touches: Minimum number of touches to be considered a zone
-    
-    Returns:
-        DataFrame with SR_Zones column containing list of zones
-        Each zone: {'level': price, 'type': 'support'/'resistance', 'strength': count, 'top': price, 'bottom': price}
+    Identifies Support and Resistance Zones using Rust API.
+    Falls back to Python if unavailable.
     """
     if df is None or df.empty or len(df) < 20:
         return df, []
     
+    # Try Rust API first
+    try:
+        from rust_client import rust_client
+        
+        if rust_client.health_check():
+            result = rust_client.analyze_smc(df)
+            
+            if result and 'sr_zones' in result:
+                # Normalize keys for compatibility (Rust uses zone_type, Python uses type)
+                zones = result['sr_zones']
+                current_price = df['Close'].iloc[-1]
+                
+                for zone in zones:
+                    if 'zone_type' in zone:
+                        zone['type'] = zone['zone_type']
+                    # Ensure distance is calculated relative to current price
+                    zone['distance'] = abs(current_price - zone['level'])
+                
+                # Sort by distance (nearest first)
+                zones.sort(key=lambda x: x['distance'])
+                
+                return df, zones
+    except Exception as e:
+        print(f"Rust API unavailable for S/R zones, using Python fallback: {e}")
+
+    # Python fallback
     # Get all swing points
     swing_highs = df[df.get('Is_Swing_High', False) == True]['High'].values
     swing_lows = df[df.get('Is_Swing_Low', False) == True]['Low'].values

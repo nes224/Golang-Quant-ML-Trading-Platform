@@ -86,76 +86,81 @@ async def broadcast_market_data():
                 mt5.shutdown()
                 return
     
+    last_analysis_time = 0
+    analysis_interval = 2.0 # Run full analysis every 2 seconds
+    
     while True:
         try:
+            current_time = asyncio.get_event_loop().time()
+            
+            # 1. Get Real-time Price (High Frequency)
+            current_price = None
             if Config.DATA_SOURCE == "MT5":
-                # Get real-time tick from MT5
                 tick = mt5.symbol_info_tick(symbol)
-                if tick is not None:
+                if tick:
                     current_price = tick.bid
-                    
-                    # Only broadcast if price changed
-                    if current_price != last_price:
-                        last_price = current_price
-                        
-                        # Fetch minimal analysis data (we can optimize this further)
-                        # For now, we'll just send the tick data and let frontend handle it
-                        # Or we can cache the last analysis and only update price
-                        
-                        data = {
-                            "type": "tick_update",
-                            "symbol": symbol,
-                            "bid": float(tick.bid),
-                            "ask": float(tick.ask),
-                            "last": float(tick.last),
-                            "timestamp": str(pd.Timestamp.now())
-                        }
-                        
-                        await manager.broadcast(json.dumps(data))
-                        
-                # Sleep very briefly to avoid overwhelming the CPU
-                await asyncio.sleep(0.1)  # 100ms = 10 ticks per second max
-                
+                    # Update DataManager with new tick
+                    if data_manager and data_manager.initialized:
+                        data_manager.update_tick(current_price)
             else:
-                # For Yahoo Finance, fall back to periodic updates (no real-time ticks available)
-                df = fetch_data(symbol, period="1mo", interval="1h")
-                if df is not None and not df.empty:
-                    df = calculate_indicators(df)
-                    df = check_signals(df)
-                    last_row = df.iloc[-1]
+                # Yahoo doesn't have real-time ticks, we rely on the analysis loop
+                pass
+
+            # 2. Run Full Analysis (Lower Frequency)
+            if current_time - last_analysis_time >= analysis_interval:
+                # Call the optimized get_signal function
+                # Note: get_signal is synchronous, but since we optimized it, it should be fast.
+                # For true async, we'd need to wrap it, but for now let's call it directly.
+                try:
+                    # We need to run this in a thread to not block the event loop
+                    signal_data = await asyncio.to_thread(get_signal, symbol)
                     
-                    signal_map = {1: "BUY", -1: "SELL", 0: "WAIT"}
-                    signal = signal_map.get(last_row['Signal'], "WAIT")
+                    # Add type for frontend routing
+                    signal_data["type"] = "full_signal_update"
                     
-                    data = {
-                        "type": "market_update",
-                        "symbol": symbol,
-                        "price": float(last_row['Close']),
-                        "rsi": float(last_row['RSI']) if not pd.isna(last_row['RSI']) else 50.0,
-                        "signal": signal,
-                        "trend": "UP" if last_row['Close'] > last_row['EMA_200'] else "DOWN",
-                        "timestamp": str(pd.Timestamp.now())
-                    }
+                    # Broadcast full analysis
+                    await manager.broadcast(json.dumps(signal_data))
+                    last_analysis_time = current_time
                     
-                    await manager.broadcast(json.dumps(data))
-                    
-                await asyncio.sleep(5)  # Yahoo: update every 5 seconds
+                except Exception as e:
+                    print(f"Error calculating signal in broadcast: {e}")
+
+            # 3. Send Tick Update (If price changed and we didn't just send a full update)
+            # This keeps the price moving smoothly on the UI between analysis updates
+            if current_price and current_price != last_price:
+                last_price = current_price
+                tick_data = {
+                    "type": "tick_update",
+                    "symbol": symbol,
+                    "price": float(current_price),
+                    "timestamp": str(pd.Timestamp.now())
+                }
+                await manager.broadcast(json.dumps(tick_data))
+
+            await asyncio.sleep(0.1) # Check every 100ms
                 
         except Exception as e:
             print(f"Error in broadcast: {e}")
             await asyncio.sleep(1)
 
+# Global Data Manager
+from data_manager import DataManager
+data_manager = None
+
 @app.on_event("startup")
 async def startup_event():
+    global data_manager
+    # Determine symbol from config
+    symbol = "XAUUSD" if Config.DATA_SOURCE == "MT5" else "GC=F"
+    
+    # Initialize Data Manager
+    data_manager = DataManager(symbol)
+    await data_manager.initialize()
+    
+    # Start broadcast task
     asyncio.create_task(broadcast_market_data())
 
-class AnalysisRequest(BaseModel):
-    symbol: str
-    current_price: float
-    trend: str
-    rsi: float
-    signal: str
-    recommendation: str
+# ... (AnalysisRequest class) ...
 
 @app.get("/")
 def read_root():
@@ -169,15 +174,20 @@ def analyze_market(
     """
     Returns raw analysis data including indicators and structure.
     """
-    # Adjust period based on timeframe constraints
-    if timeframe == "1m":
-        period = "5d"
-    elif timeframe in ["5m", "15m", "30m"]:
-        period = "1mo"
+    # Use DataManager if available and symbol matches
+    global data_manager
+    if data_manager and data_manager.symbol == symbol and data_manager.initialized:
+        df = data_manager.get_data(timeframe)
     else:
-        period = "1y"
-        
-    df = fetch_data(symbol, period=period, interval=timeframe)
+        # Fallback for other symbols or if not initialized
+        # Adjust period based on timeframe constraints
+        if timeframe == "1m":
+            period = "5d"
+        elif timeframe in ["5m", "15m", "30m"]:
+            period = "1mo"
+        else:
+            period = "3mo"
+        df = fetch_data(symbol, period=period, interval=timeframe)
     
     if df is None:
         raise HTTPException(status_code=404, detail="Data not found for symbol")
@@ -214,6 +224,8 @@ def get_signal(
     from analysis import (analyze_sentiment, identify_fvg, identify_order_blocks, 
                          identify_pin_bar, identify_rejection, calculate_confluence_score)
     
+    global data_manager
+    
     # Check cache first
     cache_key = f"signal:{symbol}"
     cached_result = cache.get(cache_key)
@@ -224,35 +236,76 @@ def get_signal(
     results = {}
     
     signal_map = {1: "BUY", -1: "SELL", 0: "WAIT"}
+
+    # 1. Determine Global Trend (H4) first for Sniper Mode
+    global_trend = "NEUTRAL"
     
-    # 1. Technical Analysis per Timeframe
-    for tf in timeframes:
-        # Adjust period based on timeframe constraints in yfinance
-        if tf == "1m":
-            period = "5d" # Max 7d
-        elif tf in ["5m", "15m", "30m"]:
-            period = "1mo" # Max 60d
-        elif tf in ["1h", "4h"]:
-            period = "1y" # Max 730d
-        else:
-            period = "1y" # Daily+
+    # Try to get H4 data from DataManager
+    df_h4_bias = None
+    global data_manager
+    if data_manager and data_manager.symbol == symbol and data_manager.initialized:
+        df_h4_bias = data_manager.get_data("4h")
+    else:
+        df_h4_bias = fetch_data(symbol, period="3mo", interval="4h")
+        
+    if df_h4_bias is not None and not df_h4_bias.empty:
+        # Calculate EMA 200 for H4 if not present
+        if 'EMA_200' not in df_h4_bias.columns:
+            df_h4_bias = calculate_indicators(df_h4_bias)
             
-        df = fetch_data(symbol, period=period, interval=tf)
+        last_h4 = df_h4_bias.iloc[-1]
+        if last_h4['Close'] > last_h4['EMA_200']:
+            global_trend = "UP"
+        else:
+            global_trend = "DOWN"
+    
+    # 2. Technical Analysis per Timeframe (Parallel Execution)
+    import concurrent.futures
+    
+    def process_timeframe(tf, bias_trend):
+        # Use DataManager if available
+        global data_manager
+        # Debug log
+        # print(f"Checking DataManager for {tf}: Symbol={symbol}, DM_Symbol={data_manager.symbol if data_manager else 'None'}, Init={data_manager.initialized if data_manager else 'False'}")
+        
+        if data_manager and data_manager.initialized:
+            # Allow alias matching (GC=F == XAUUSD)
+            is_match = (data_manager.symbol == symbol) or \
+                       (data_manager.symbol == "XAUUSD" and symbol == "GC=F") or \
+                       (data_manager.symbol == "GC=F" and symbol == "XAUUSD")
+                       
+            if is_match:
+                # print(f"Using DataManager for {tf}")
+                df = data_manager.get_data(tf)
+                if df is not None:
+                    df = df.copy()
+            else:
+                print(f"Symbol mismatch or data missing in DM for {tf}. Fallback to fetch.")
+                # Fallback logic below
+        else:
+            print(f"DataManager not ready for {tf}. Fallback to fetch.")
+
+        if 'df' not in locals() or df is None:
+            # Fallback
+            if tf == "1m":
+                period = "5d" 
+            elif tf in ["5m", "15m", "30m"]:
+                period = "1mo" 
+            elif tf in ["1h", "4h"]:
+                period = "3mo" 
+            else:
+                period = "3mo" 
+            df = fetch_data(symbol, period=period, interval=tf)
         
         if df is None or df.empty:
-            results[tf] = {"error": "Data not available"}
-            continue
+            return tf, {"error": "Data not available"}, None
             
         df = calculate_indicators(df)
-        df = identify_structure(df) # Ensure structure is identified
+        df = identify_structure(df) 
         
         # Identify S/R Zones
         from sr_zones import identify_sr_zones, get_nearest_sr
         df, sr_zones = identify_sr_zones(df)
-        
-        # DISABLED: Chart patterns are slow, uncomment to re-enable
-        # from chart_patterns import identify_chart_patterns
-        # df = identify_chart_patterns(df)
         
         df = identify_fvg(df)
         df = identify_order_blocks(df)
@@ -262,7 +315,32 @@ def get_signal(
         
         last_row = df.iloc[-1]
         trend = "UP" if last_row['Close'] > last_row['EMA_200'] else "DOWN"
-        tech_signal = last_row['Signal']
+        tech_signal = last_row['Signal'] # 1, -1, 0
+        
+        # --- SNIPER MODE FILTER ---
+        # For small timeframes, filter signals based on Global Trend (H4) and Indicators
+        final_signal = signal_map.get(tech_signal, "WAIT")
+        
+        if tf in ["1m", "5m", "15m", "30m"]:
+            # 1. Trend Filter
+            if bias_trend == "UP" and tech_signal == -1:
+                final_signal = "WAIT (Counter-Trend)"
+            elif bias_trend == "DOWN" and tech_signal == 1:
+                final_signal = "WAIT (Counter-Trend)"
+                
+            # 2. RSI Filter (Don't buy top, Don't sell bottom)
+            rsi_val = last_row['RSI']
+            if final_signal == "BUY" and rsi_val > 70:
+                final_signal = "WAIT (RSI Overbought)"
+            elif final_signal == "SELL" and rsi_val < 30:
+                final_signal = "WAIT (RSI Oversold)"
+                
+            # 3. ATR Filter (Avoid low volatility)
+            atr_val = last_row.get('ATR', 0)
+            price_val = last_row['Close']
+            if atr_val > 0 and (atr_val / price_val) < 0.0002:
+                final_signal = "WAIT (Low Volatility)"
+        # --------------------------
         
         # Check recent SMC features (last 3 candles)
         recent_df = df.tail(3)
@@ -288,18 +366,12 @@ def get_signal(
         if last_row.get('Rejection_Bullish', False): pa_patterns.append("Bullish Rejection")
         if last_row.get('Rejection_Bearish', False): pa_patterns.append("Bearish Rejection")
         
-        # Check Chart Patterns (Multi-swing)
+        # Check Chart Patterns (Multi-swing) - DISABLED as requested
         chart_patterns = []
-        if last_row.get('Double_Top', False): chart_patterns.append("Double Top")
-        if last_row.get('Double_Bottom', False): chart_patterns.append("Double Bottom")
-        if last_row.get('Head_Shoulders', False): chart_patterns.append("Head & Shoulders")
-        if last_row.get('Inv_Head_Shoulders', False): chart_patterns.append("Inv H&S")
-        if last_row.get('M_Pattern', False): chart_patterns.append("M Pattern")
-        if last_row.get('W_Pattern', False): chart_patterns.append("W Pattern")
         
         smc_text = ", ".join(smc_context) if smc_context else "None"
         pa_text = ", ".join(pa_patterns) if pa_patterns else "None"
-        chart_text = ", ".join(chart_patterns) if chart_patterns else "None"
+        chart_text = "Disabled" 
         
         # Format S/R zones
         nearest_support = get_nearest_sr(df, sr_zones, 'support')
@@ -307,21 +379,51 @@ def get_signal(
         
         sr_text = []
         if nearest_support:
-            sr_text.append(f"S: ${nearest_support['level']} ({nearest_support['strength']}x)")
+            # Use range if available, otherwise fallback to level
+            s_min = nearest_support.get('bottom', nearest_support['level'])
+            s_max = nearest_support.get('top', nearest_support['level'])
+            sr_text.append(f"S: {s_min}-{s_max} ({nearest_support['strength']}x)")
+            
         if nearest_resistance:
-            sr_text.append(f"R: ${nearest_resistance['level']} ({nearest_resistance['strength']}x)")
+            r_min = nearest_resistance.get('bottom', nearest_resistance['level'])
+            r_max = nearest_resistance.get('top', nearest_resistance['level'])
+            sr_text.append(f"R: {r_min}-{r_max} ({nearest_resistance['strength']}x)")
+            
         sr_display = ", ".join(sr_text) if sr_text else "None"
         
-        results[tf] = {
+        result_data = {
             "price": last_row['Close'],
             "trend": trend,
             "rsi": round(last_row['RSI'], 2),
-            "signal": signal_map.get(tech_signal, "WAIT"),
+            "signal": final_signal,
             "smc": smc_text,
             "price_action": pa_text,
             "chart_patterns": chart_text,
             "sr_zones": sr_display
         }
+        
+        # Return df as well for potential reuse (e.g. 4h for confluence)
+        return tf, result_data, df
+
+    # Use ThreadPoolExecutor for parallel fetching and processing
+    # Max workers = number of timeframes to avoid queuing
+    df_4h_cached = None
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
+        future_to_tf = {executor.submit(process_timeframe, tf, global_trend): tf for tf in timeframes}
+        for future in concurrent.futures.as_completed(future_to_tf):
+            tf = future_to_tf[future]
+            try:
+                tf_result, data, df_result = future.result()
+                results[tf_result] = data
+                
+                # Cache 4h dataframe for confluence analysis
+                if tf_result == "4h" and df_result is not None:
+                    df_4h_cached = df_result
+                    
+            except Exception as exc:
+                print(f'{tf} generated an exception: {exc}')
+                results[tf] = {"error": str(exc)}
 
     # 2. Fundamental Analysis (Sentiment)
     news = fetch_news(symbol)
@@ -334,20 +436,32 @@ def get_signal(
         sentiment_text = "BEARISH"
     
     # 3. Confluence Analysis for Primary Timeframe (4h)
-    # Re-fetch 4h data with all patterns for confluence
-    df_4h = fetch_data(symbol, period="1y", interval="4h")
-    if df_4h is not None and not df_4h.empty:
-        df_4h = calculate_indicators(df_4h)
-        df_4h = identify_structure(df_4h)
-        df_4h = identify_fvg(df_4h)
-        df_4h = identify_order_blocks(df_4h)
-        df_4h = identify_pin_bar(df_4h)
-        df_4h = identify_rejection(df_4h)
-        df_4h = check_signals(df_4h)
-        
+    # Reuse cached 4h data if available, otherwise fetch (fallback)
+    if df_4h_cached is not None and not df_4h_cached.empty:
+        df_4h = df_4h_cached
+        # Data is already processed in the loop above
         confluence = calculate_confluence_score(df_4h.iloc[-1], sentiment_score)
     else:
-        confluence = {"score": 0, "grade": "F", "factors": ["No data"], "direction": "WAIT"}
+        # Fallback if 4h failed in loop
+        # Try DataManager first
+        # Try DataManager first
+        if data_manager and data_manager.symbol == symbol and data_manager.initialized:
+            df_4h = data_manager.get_data("4h")
+            if df_4h is not None: df_4h = df_4h.copy()
+        else:
+            df_4h = fetch_data(symbol, period="3mo", interval="4h")
+            
+        if df_4h is not None and not df_4h.empty:
+            df_4h = calculate_indicators(df_4h)
+            df_4h = identify_structure(df_4h)
+            df_4h = identify_fvg(df_4h)
+            df_4h = identify_order_blocks(df_4h)
+            df_4h = identify_pin_bar(df_4h)
+            df_4h = identify_rejection(df_4h)
+            df_4h = check_signals(df_4h)
+            confluence = calculate_confluence_score(df_4h.iloc[-1], sentiment_score)
+        else:
+            confluence = {"score": 0, "grade": "F", "factors": ["No data"], "direction": "WAIT"}
         
     # 4. Simple Confluence Logic (Summary)
     # We prioritize Daily Trend and 4h Structure

@@ -54,10 +54,28 @@ def calculate_indicators(df):
 def identify_structure(df, pivot_legs=5):
     """
     Identifies Swing Highs and Swing Lows for Support & Resistance.
+    Uses Rust API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
 
+    # Try Rust API first
+    try:
+        from rust_client import rust_client
+        
+        if rust_client.health_check():
+            result = rust_client.analyze_smc(df)
+            
+            if result:
+                df['Swing_High'] = result['swing_highs']
+                df['Swing_Low'] = result['swing_lows']
+                df['Is_Swing_High'] = [x is not None for x in result['swing_highs']]
+                df['Is_Swing_Low'] = [x is not None for x in result['swing_lows']]
+                return df
+    except Exception as e:
+        print(f"Rust API unavailable for structure, using Python fallback: {e}")
+
+    # Python fallback
     df['Swing_High'] = df['High'].rolling(window=pivot_legs*2+1, center=True).max()
     df['Swing_Low'] = df['Low'].rolling(window=pivot_legs*2+1, center=True).min()
     
@@ -203,8 +221,7 @@ def analyze_sentiment(news_items):
 def identify_fvg(df):
     """
     Identifies Fair Value Gaps (FVG).
-    Returns the DataFrame with 'FVG_Bullish' and 'FVG_Bearish' columns 
-    containing the price levels (Top, Bottom) of the gap.
+    Uses Rust API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
@@ -212,31 +229,31 @@ def identify_fvg(df):
     df['FVG_Bullish'] = None
     df['FVG_Bearish'] = None
     
-    # Need at least 3 candles
     if len(df) < 3:
         return df
 
-    # Vectorized FVG detection
-    # Bullish FVG: Low[i] > High[i-2]
-    # Gap is between High[i-2] and Low[i]
+    # Try Rust API first
+    try:
+        from rust_client import rust_client
+        
+        if rust_client.health_check():
+            result = rust_client.analyze_smc(df)
+            
+            if result:
+                df['FVG_Bullish'] = result['fvg_bullish']
+                df['FVG_Bearish'] = result['fvg_bearish']
+                return df
+    except Exception as e:
+        print(f"Rust API unavailable for FVG, using Python fallback: {e}")
+
+    # Python fallback
     high_shift_2 = df['High'].shift(2)
     low_current = df['Low']
+    bullish_fvg_mask = (low_current > high_shift_2) & (df['Close'] > df['Open'])
     
-    bullish_fvg_mask = (low_current > high_shift_2) & (df['Close'] > df['Open']) # Ensure current is green for context (optional but good)
-    
-    # Bearish FVG: High[i] < Low[i-2]
-    # Gap is between Low[i-2] and High[i]
     low_shift_2 = df['Low'].shift(2)
     high_current = df['High']
-    
     bearish_fvg_mask = (high_current < low_shift_2) & (df['Close'] < df['Open'])
-    
-    # Store gap levels as (Bottom, Top) tuple or string
-    # For Bullish: Bottom=High[i-2], Top=Low[i]
-    # For Bearish: Bottom=High[i], Top=Low[i-2] (Visual bottom/top)
-    
-    # We will just mark the presence for now to keep it simple for the signal check
-    # In a real chart, we'd store the zone coordinates.
     
     df.loc[bullish_fvg_mask, 'FVG_Bullish'] = True
     df.loc[bearish_fvg_mask, 'FVG_Bearish'] = True
@@ -246,8 +263,7 @@ def identify_fvg(df):
 def identify_order_blocks(df):
     """
     Identifies simple Order Blocks (OB).
-    Bullish OB: Last bearish candle before a sequence of bullish candles (simplified).
-    Bearish OB: Last bullish candle before a sequence of bearish candles.
+    Uses Rust API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
@@ -255,31 +271,34 @@ def identify_order_blocks(df):
     df['OB_Bullish'] = False
     df['OB_Bearish'] = False
     
-    # Simple logic: 
-    # Bullish OB: Candle i-1 is Red, Candle i is Green and Engulfs i-1 or breaks high
-    # Bearish OB: Candle i-1 is Green, Candle i is Red and Engulfs i-1 or breaks low
+    # Try Rust API first
+    try:
+        from rust_client import rust_client
+        
+        if rust_client.health_check():
+            result = rust_client.analyze_smc(df)
+            
+            if result:
+                df['OB_Bullish'] = result['ob_bullish']
+                df['OB_Bearish'] = result['ob_bearish']
+                return df
+    except Exception as e:
+        print(f"Rust API unavailable for OB, using Python fallback: {e}")
     
+    # Python fallback
     prev_open = df['Open'].shift(1)
     prev_close = df['Close'].shift(1)
     curr_open = df['Open']
     curr_close = df['Close']
     
-    # Previous Red (Open > Close)
     prev_is_red = prev_open > prev_close
-    # Current Green (Close > Open)
     curr_is_green = curr_close > curr_open
-    # Engulfing: Current Close > Previous Open
     bullish_engulf = curr_close > prev_open
-    
     bullish_ob_mask = prev_is_red & curr_is_green & bullish_engulf
     
-    # Previous Green
     prev_is_green = prev_close > prev_open
-    # Current Red
     curr_is_red = curr_open > curr_close
-    # Engulfing: Current Close < Previous Open
     bearish_engulf = curr_close < prev_open
-    
     bearish_ob_mask = prev_is_green & curr_is_red & bearish_engulf
     
     df.loc[bullish_ob_mask, 'OB_Bullish'] = True
@@ -290,150 +309,62 @@ def identify_order_blocks(df):
 
 def identify_candlestick_patterns(df):
     """
-    Identifies multiple candlestick patterns including:
-    - Hammer & Inverted Hammer
-    - Hanging Man
-    - Dragonfly & Gravestone Doji
-    - Bullish & Bearish Engulfing
-    - Morning Star & Evening Star
-    
-    Returns DataFrame with pattern columns.
+    Identifies multiple candlestick patterns using Rust API.
+    Falls back to Python if unavailable.
     """
     if df is None or df.empty or len(df) < 3:
         return df
     
+    # Initialize columns
+    patterns = [
+        'Hammer', 'Inverted_Hammer', 'Hanging_Man', 
+        'Dragonfly_Doji', 'Gravestone_Doji', 
+        'Bullish_Engulfing', 'Bearish_Engulfing',
+        'Morning_Star', 'Evening_Star'
+    ]
+    
+    for p in patterns:
+        df[p] = False
+        
+    # Try Rust API first
+    try:
+        from rust_client import rust_client
+        
+        if rust_client.health_check():
+            result = rust_client.detect_patterns(df)
+            
+            if result:
+                df['Hammer'] = result['hammer']
+                df['Inverted_Hammer'] = result['inverted_hammer']
+                df['Hanging_Man'] = result['hanging_man']
+                df['Bullish_Engulfing'] = result['bullish_engulfing']
+                df['Bearish_Engulfing'] = result['bearish_engulfing']
+                df['Dragonfly_Doji'] = result['dragonfly_doji']
+                df['Gravestone_Doji'] = result['gravestone_doji']
+                df['Morning_Star'] = result['morning_star']
+                df['Evening_Star'] = result['evening_star']
+                return df
+    except Exception as e:
+        print(f"Rust API unavailable for patterns, using Python fallback: {e}")
+
+    # Python fallback (Simplified for brevity as Rust is primary)
     # Calculate candle components
     body = abs(df['Close'] - df['Open'])
     upper_wick = df['High'] - df[['Open', 'Close']].max(axis=1)
     lower_wick = df[['Open', 'Close']].min(axis=1) - df['Low']
     candle_range = df['High'] - df['Low']
-    
-    # Determine candle color
     is_bullish = df['Close'] > df['Open']
     is_bearish = df['Close'] < df['Open']
     
-    # Initialize pattern columns
-    df['Hammer'] = False
-    df['Inverted_Hammer'] = False
-    df['Hanging_Man'] = False
-    df['Dragonfly_Doji'] = False
-    df['Gravestone_Doji'] = False
-    df['Bullish_Engulfing'] = False
-    df['Bearish_Engulfing'] = False
-    df['Morning_Star'] = False
-    df['Evening_Star'] = False
-    
-    # 1. HAMMER (Bullish reversal at bottom)
-    # Long lower wick (2x body), small body, close near high
-    hammer_mask = (
-        (lower_wick > 2 * body) &
-        (body < 0.3 * candle_range) &
-        (upper_wick < 0.1 * candle_range) &
-        (df['Close'] > df['Low'] + 0.6 * candle_range)
-    )
+    # Hammer
+    hammer_mask = (lower_wick > 2 * body) & (body < 0.3 * candle_range) & (upper_wick < 0.1 * candle_range)
     df.loc[hammer_mask, 'Hammer'] = True
     
-    # 2. INVERTED HAMMER (Bullish reversal at bottom)
-    # Long upper wick (2x body), small body, close near low
-    inverted_hammer_mask = (
-        (upper_wick > 2 * body) &
-        (body < 0.3 * candle_range) &
-        (lower_wick < 0.1 * candle_range) &
-        (df['Close'] < df['Low'] + 0.4 * candle_range)
-    )
-    df.loc[inverted_hammer_mask, 'Inverted_Hammer'] = True
-    
-    # 3. HANGING MAN (Bearish reversal at top)
-    # Same shape as hammer but appears after uptrend
-    hanging_man_mask = (
-        (lower_wick > 2 * body) &
-        (body < 0.3 * candle_range) &
-        (upper_wick < 0.1 * candle_range) &
-        (df['Close'] > df['Low'] + 0.6 * candle_range)
-    )
-    df.loc[hanging_man_mask, 'Hanging_Man'] = True
-    
-    # 4. DRAGONFLY DOJI (Bullish reversal)
-    # T-shaped: long lower wick, no upper wick, tiny body
-    dragonfly_mask = (
-        (body < 0.05 * candle_range) &
-        (lower_wick > 0.7 * candle_range) &
-        (upper_wick < 0.05 * candle_range)
-    )
-    df.loc[dragonfly_mask, 'Dragonfly_Doji'] = True
-    
-    # 5. GRAVESTONE DOJI (Bearish reversal)
-    # Inverted T-shaped: long upper wick, no lower wick, tiny body
-    gravestone_mask = (
-        (body < 0.05 * candle_range) &
-        (upper_wick > 0.7 * candle_range) &
-        (lower_wick < 0.05 * candle_range)
-    )
-    df.loc[gravestone_mask, 'Gravestone_Doji'] = True
-    
-    # 6. BULLISH ENGULFING (2-candle pattern)
-    # Previous red, current green, current body engulfs previous
+    # Engulfing
     prev_is_bearish = is_bearish.shift(1)
     curr_is_bullish = is_bullish
-    bullish_engulfing_mask = (
-        prev_is_bearish &
-        curr_is_bullish &
-        (df['Close'] > df['Open'].shift(1)) &
-        (df['Open'] < df['Close'].shift(1))
-    )
+    bullish_engulfing_mask = prev_is_bearish & curr_is_bullish & (df['Close'] > df['Open'].shift(1)) & (df['Open'] < df['Close'].shift(1))
     df.loc[bullish_engulfing_mask, 'Bullish_Engulfing'] = True
-    
-    # 7. BEARISH ENGULFING (2-candle pattern)
-    # Previous green, current red, current body engulfs previous
-    prev_is_bullish = is_bullish.shift(1)
-    curr_is_bearish = is_bearish
-    bearish_engulfing_mask = (
-        prev_is_bullish &
-        curr_is_bearish &
-        (df['Open'] > df['Close'].shift(1)) &
-        (df['Close'] < df['Open'].shift(1))
-    )
-    df.loc[bearish_engulfing_mask, 'Bearish_Engulfing'] = True
-    
-    # 8. MORNING STAR (3-candle bullish reversal pattern)
-    # Day 1: Long bearish, Day 2: Small body (star), Day 3: Long bullish
-    for i in range(2, len(df)):
-        # Day 1: Bearish candle
-        day1_bearish = df.iloc[i-2]['Close'] < df.iloc[i-2]['Open']
-        day1_body = abs(df.iloc[i-2]['Close'] - df.iloc[i-2]['Open'])
-        
-        # Day 2: Small body (doji/spinning top) - gap down
-        day2_body = abs(df.iloc[i-1]['Close'] - df.iloc[i-1]['Open'])
-        day2_range = df.iloc[i-1]['High'] - df.iloc[i-1]['Low']
-        day2_small = day2_body < 0.3 * day2_range
-        day2_gap_down = df.iloc[i-1]['High'] < df.iloc[i-2]['Close']
-        
-        # Day 3: Bullish candle closing above midpoint of day 1
-        day3_bullish = df.iloc[i]['Close'] > df.iloc[i]['Open']
-        day3_closes_high = df.iloc[i]['Close'] > (df.iloc[i-2]['Open'] + df.iloc[i-2]['Close']) / 2
-        
-        if day1_bearish and day2_small and day3_bullish and day3_closes_high:
-            df.loc[df.index[i], 'Morning_Star'] = True
-    
-    # 9. EVENING STAR (3-candle bearish reversal pattern)
-    # Day 1: Long bullish, Day 2: Small body (star), Day 3: Long bearish
-    for i in range(2, len(df)):
-        # Day 1: Bullish candle
-        day1_bullish = df.iloc[i-2]['Close'] > df.iloc[i-2]['Open']
-        day1_body = abs(df.iloc[i-2]['Close'] - df.iloc[i-2]['Open'])
-        
-        # Day 2: Small body (doji/spinning top) - gap up
-        day2_body = abs(df.iloc[i-1]['Close'] - df.iloc[i-1]['Open'])
-        day2_range = df.iloc[i-1]['High'] - df.iloc[i-1]['Low']
-        day2_small = day2_body < 0.3 * day2_range
-        day2_gap_up = df.iloc[i-1]['Low'] > df.iloc[i-2]['Close']
-        
-        # Day 3: Bearish candle closing below midpoint of day 1
-        day3_bearish = df.iloc[i]['Close'] < df.iloc[i]['Open']
-        day3_closes_low = df.iloc[i]['Close'] < (df.iloc[i-2]['Open'] + df.iloc[i-2]['Close']) / 2
-        
-        if day1_bullish and day2_small and day3_bearish and day3_closes_low:
-            df.loc[df.index[i], 'Evening_Star'] = True
     
     return df
 

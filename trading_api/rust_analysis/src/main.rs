@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 mod indicators;
 mod patterns;
+mod smc;
+mod sr_zones;
 
 #[derive(Deserialize)]
 struct IndicatorRequest {
@@ -55,6 +57,10 @@ struct PatternResponse {
     hanging_man: Vec<bool>,
     bullish_engulfing: Vec<bool>,
     bearish_engulfing: Vec<bool>,
+    dragonfly_doji: Vec<bool>,
+    gravestone_doji: Vec<bool>,
+    morning_star: Vec<bool>,
+    evening_star: Vec<bool>,
 }
 
 async fn detect_patterns(req: web::Json<PatternRequest>) -> impl Responder {
@@ -63,6 +69,10 @@ async fn detect_patterns(req: web::Json<PatternRequest>) -> impl Responder {
     let hanging_man = patterns::detect_hanging_man(&req.ohlc);
     let bullish_engulfing = patterns::detect_bullish_engulfing(&req.ohlc);
     let bearish_engulfing = patterns::detect_bearish_engulfing(&req.ohlc);
+    let dragonfly_doji = patterns::detect_dragonfly_doji(&req.ohlc);
+    let gravestone_doji = patterns::detect_gravestone_doji(&req.ohlc);
+    let morning_star = patterns::detect_morning_star(&req.ohlc);
+    let evening_star = patterns::detect_evening_star(&req.ohlc);
     
     HttpResponse::Ok().json(PatternResponse {
         hammer,
@@ -70,6 +80,49 @@ async fn detect_patterns(req: web::Json<PatternRequest>) -> impl Responder {
         hanging_man,
         bullish_engulfing,
         bearish_engulfing,
+        dragonfly_doji,
+        gravestone_doji,
+        morning_star,
+        evening_star,
+    })
+}
+
+#[derive(Serialize)]
+struct SmcResponse {
+    swing_highs: Vec<Option<f64>>,
+    swing_lows: Vec<Option<f64>>,
+    fvg_bullish: Vec<bool>,
+    fvg_bearish: Vec<bool>,
+    ob_bullish: Vec<bool>,
+    ob_bearish: Vec<bool>,
+    sr_zones: Vec<sr_zones::SrZone>,
+}
+
+async fn analyze_smc(req: web::Json<PatternRequest>) -> impl Responder {
+    let high: Vec<f64> = req.ohlc.iter().map(|x| x.high).collect();
+    let low: Vec<f64> = req.ohlc.iter().map(|x| x.low).collect();
+    let current_price = req.ohlc.last().map(|x| x.close).unwrap_or(0.0);
+    
+    let (swing_highs, swing_lows) = smc::identify_swing_points(&high, &low, 5);
+    let (fvg_bullish, fvg_bearish) = smc::detect_fvg(&req.ohlc);
+    let (ob_bullish, ob_bearish) = smc::detect_order_blocks(&req.ohlc);
+    
+    let zones = sr_zones::identify_sr_zones(
+        &swing_highs, 
+        &swing_lows, 
+        current_price, 
+        0.002, 
+        2
+    );
+    
+    HttpResponse::Ok().json(SmcResponse {
+        swing_highs,
+        swing_lows,
+        fvg_bullish,
+        fvg_bearish,
+        ob_bullish,
+        ob_bearish,
+        sr_zones: zones,
     })
 }
 
@@ -93,6 +146,7 @@ async fn main() -> std::io::Result<()> {
             .route("/health", web::get().to(health_check))
             .route("/calculate/indicators", web::post().to(calculate_indicators))
             .route("/detect/patterns", web::post().to(detect_patterns))
+            .route("/analyze/smc", web::post().to(analyze_smc))
     })
     .bind(("127.0.0.1", 8001))?
     .run()

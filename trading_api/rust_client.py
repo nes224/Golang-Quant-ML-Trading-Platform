@@ -78,6 +78,39 @@ class RustAnalysisClient:
         except Exception as e:
             print(f"Error calling Rust patterns API: {e}")
             return None
+    
+    def analyze_smc(self, df: pd.DataFrame) -> Dict:
+        """
+        Analyze SMC features (Swing Points, FVG, Order Blocks) using Rust service.
+        
+        Args:
+            df: DataFrame with OHLC data
+        
+        Returns:
+            Dict with SMC analysis results
+        """
+        try:
+            ohlc = []
+            for _, row in df.iterrows():
+                ohlc.append({
+                    "open": float(row['Open']),
+                    "high": float(row['High']),
+                    "low": float(row['Low']),
+                    "close": float(row['Close'])
+                })
+            
+            payload = {"ohlc": ohlc}
+            
+            response = requests.post(
+                f"{self.base_url}/analyze/smc",
+                json=payload,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error calling Rust SMC API: {e}")
+            return None
 
 # Global client instance
 rust_client = RustAnalysisClient()

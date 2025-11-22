@@ -181,18 +181,22 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(signalData.timeframes).map(([tf, data]: [string, any]) => (
-                      <tr key={tf}>
-                        <td className="tf-cell">{tf}</td>
-                        <td>${data.price?.toFixed(2)}</td>
-                        <td className={`trend-${data.trend?.toLowerCase()}`}>{data.trend}</td>
-                        <td>{data.rsi}</td>
-                        <td className={`signal-${data.signal?.toLowerCase()}`}>{data.signal}</td>
-                        <td className="pa-cell">{data.price_action}</td>
-                        <td className="chart-pattern-cell">{data.chart_patterns || 'None'}</td>
-                        <td className="sr-zone-cell">{data.sr_zones || 'None'}</td>
-                      </tr>
-                    ))}
+                    {['1d', '4h', '1h', '30m', '15m', '5m', '1m'].map((tf) => {
+                      const data = signalData.timeframes[tf];
+                      if (!data) return null;
+                      return (
+                        <tr key={tf}>
+                          <td className="tf-cell">{tf}</td>
+                          <td>${data.price?.toFixed(2)}</td>
+                          <td className={`trend-${data.trend?.toLowerCase()}`}>{data.trend}</td>
+                          <td>{data.rsi}</td>
+                          <td className={`signal-${data.signal?.toLowerCase()}`}>{data.signal}</td>
+                          <td className="pa-cell">{data.price_action}</td>
+                          <td className="chart-pattern-cell">{data.chart_patterns || 'None'}</td>
+                          <td className="sr-zone-cell">{data.sr_zones || 'None'}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
