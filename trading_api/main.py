@@ -11,12 +11,16 @@ from analysis import calculate_indicators, identify_structure, check_signals
 from config import Config
 
 from fastapi.middleware.cors import CORSMiddleware
+from reference_api import router as reference_router
 
 app = FastAPI(
     title="XAU/USD Trading Analysis Bot",
     description="API for analyzing Gold (XAU/USD) market data and generating trading signals.",
     version="1.0.0"
 )
+
+# Include reference indicators router
+app.include_router(reference_router, prefix="/api", tags=["Reference Indicators"])
 
 # Enable CORS for Next.js Dashboard
 app.add_middleware(
@@ -375,44 +379,6 @@ def get_signal(
         
         # Format S/R zones
         nearest_support = get_nearest_sr(df, sr_zones, 'support')
-        nearest_resistance = get_nearest_sr(df, sr_zones, 'resistance')
-        
-        sr_text = []
-        if nearest_support:
-            # Use range if available, otherwise fallback to level
-            s_min = nearest_support.get('bottom', nearest_support['level'])
-            s_max = nearest_support.get('top', nearest_support['level'])
-            sr_text.append(f"S: {s_min}-{s_max} ({nearest_support['strength']}x)")
-            
-        if nearest_resistance:
-            r_min = nearest_resistance.get('bottom', nearest_resistance['level'])
-            r_max = nearest_resistance.get('top', nearest_resistance['level'])
-            sr_text.append(f"R: {r_min}-{r_max} ({nearest_resistance['strength']}x)")
-            
-        sr_display = ", ".join(sr_text) if sr_text else "None"
-        
-        result_data = {
-            "price": last_row['Close'],
-            "trend": trend,
-            "rsi": round(last_row['RSI'], 2),
-            "signal": final_signal,
-            "smc": smc_text,
-            "price_action": pa_text,
-            "chart_patterns": chart_text,
-            "sr_zones": sr_display
-        }
-        
-        # Return df as well for potential reuse (e.g. 4h for confluence)
-        return tf, result_data, df
-
-    # Use ThreadPoolExecutor for parallel fetching and processing
-    # Max workers = number of timeframes to avoid queuing
-    df_4h_cached = None
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
-        future_to_tf = {executor.submit(process_timeframe, tf, global_trend): tf for tf in timeframes}
-        for future in concurrent.futures.as_completed(future_to_tf):
-            tf = future_to_tf[future]
             try:
                 tf_result, data, df_result = future.result()
                 results[tf_result] = data

@@ -95,17 +95,29 @@ struct SmcResponse {
     fvg_bearish: Vec<bool>,
     ob_bullish: Vec<bool>,
     ob_bearish: Vec<bool>,
+    sweep_bullish: Vec<bool>,
+    sweep_bearish: Vec<bool>,
+    fvg_zones: Vec<smc::FvgZone>,
+    ob_zones: Vec<smc::OrderBlockZone>,
     sr_zones: Vec<sr_zones::SrZone>,
 }
 
 async fn analyze_smc(req: web::Json<PatternRequest>) -> impl Responder {
     let high: Vec<f64> = req.ohlc.iter().map(|x| x.high).collect();
     let low: Vec<f64> = req.ohlc.iter().map(|x| x.low).collect();
+    let close: Vec<f64> = req.ohlc.iter().map(|x| x.close).collect();
     let current_price = req.ohlc.last().map(|x| x.close).unwrap_or(0.0);
     
     let (swing_highs, swing_lows) = smc::identify_swing_points(&high, &low, 5);
+    
+    // Get both boolean and zone data
     let (fvg_bullish, fvg_bearish) = smc::detect_fvg(&req.ohlc);
+    let fvg_zones = smc::detect_fvg_zones(&req.ohlc);
+    
     let (ob_bullish, ob_bearish) = smc::detect_order_blocks(&req.ohlc);
+    let ob_zones = smc::detect_order_block_zones(&req.ohlc);
+    
+    let (sweep_bullish, sweep_bearish) = smc::detect_liquidity_sweep(&high, &low, &close, 20);
     
     let zones = sr_zones::identify_sr_zones(
         &swing_highs, 
@@ -122,6 +134,10 @@ async fn analyze_smc(req: web::Json<PatternRequest>) -> impl Responder {
         fvg_bearish,
         ob_bullish,
         ob_bearish,
+        sweep_bullish,
+        sweep_bearish,
+        fvg_zones,
+        ob_zones,
         sr_zones: zones,
     })
 }
@@ -136,10 +152,11 @@ async fn health_check() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    println!("🚀 Starting Rust Analysis Service on http://localhost:8001");
+    println!("🦀 Rust Analysis API starting on http://127.0.0.1:8001");
     
     HttpServer::new(|| {
-        let cors = Cors::permissive(); // Allow all origins for development
+        // CORS configuration - allow all origins for development
+        let cors = Cors::permissive();
         
         App::new()
             .wrap(cors)

@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: trading_bot_db
     restart: unless-stopped
     environment:
@@ -15,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./Trading_Api/db_schema.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trading_user}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-trading_user}" ]
       interval: 10s
       timeout: 5s
       retries: 5

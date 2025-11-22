@@ -242,6 +242,13 @@ def identify_fvg(df):
             if result:
                 df['FVG_Bullish'] = result['fvg_bullish']
                 df['FVG_Bearish'] = result['fvg_bearish']
+                
+                # Parse zone data
+                if 'fvg_zones' in result:
+                    fvg_zones = result['fvg_zones']
+                    # Store zones as metadata (can be accessed later)
+                    df.attrs['fvg_zones'] = fvg_zones
+                
                 return df
     except Exception as e:
         print(f"Rust API unavailable for FVG, using Python fallback: {e}")
@@ -281,6 +288,13 @@ def identify_order_blocks(df):
             if result:
                 df['OB_Bullish'] = result['ob_bullish']
                 df['OB_Bearish'] = result['ob_bearish']
+                
+                # Parse zone data
+                if 'ob_zones' in result:
+                    ob_zones = result['ob_zones']
+                    # Store zones as metadata
+                    df.attrs['ob_zones'] = ob_zones
+                
                 return df
     except Exception as e:
         print(f"Rust API unavailable for OB, using Python fallback: {e}")

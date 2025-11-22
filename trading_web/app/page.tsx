@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import './dashboard.css';
+import './dxy.css';
 
 export default function Dashboard() {
   const [signalData, setSignalData] = useState<any>(null);
-  const [riskData, setRiskData] = useState<any>(null);
-  const [accountBalance, setAccountBalance] = useState('');
-  const [riskPercent, setRiskPercent] = useState('');
+  const [dxyData, setDxyData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [selectedSymbol, setSelectedSymbol] = useState('GC=F'); // GC=F for Gold, BTC-USD for Bitcoin
@@ -15,6 +14,7 @@ export default function Dashboard() {
   // Fetch signal data and connect to WebSocket
   useEffect(() => {
     fetchSignal();
+    fetchDXY(); // Fetch DXY on mount
 
     // WebSocket Connection
     const ws = new WebSocket('ws://localhost:8000/ws');
@@ -85,16 +85,13 @@ export default function Dashboard() {
     }
   };
 
-  const calculateRisk = async () => {
+  const fetchDXY = async () => {
     try {
-      const res = await fetch(
-        `http://localhost:8000/risk?account_balance=${accountBalance}&risk_percent=${riskPercent}`,
-        { method: 'POST' }
-      );
+      const res = await fetch('http://localhost:8000/api/dxy?timeframe=1d');
       const data = await res.json();
-      setRiskData(data);
+      setDxyData(data);
     } catch (error) {
-      console.error('Error calculating risk:', error);
+      console.error('Error fetching DXY:', error);
     }
   };
 
@@ -135,6 +132,32 @@ export default function Dashboard() {
       </header>
 
       <div className="dashboard-grid">
+        {/* DXY Reference Indicator */}
+        {dxyData && !dxyData.error && (
+          <section className="card dxy-card">
+            <h2>💵 DXY (US Dollar Index)</h2>
+            <div className="dxy-summary">
+              <div className="dxy-price">
+                <span className="label">Price</span>
+                <span className="value">{dxyData.price}</span>
+              </div>
+              <div className={`dxy-trend trend-${dxyData.trend?.toLowerCase()}`}>
+                <span className="label">Trend</span>
+                <span className="value">
+                  {dxyData.trend === 'UP' && '↗ UP'}
+                  {dxyData.trend === 'DOWN' && '↘ DOWN'}
+                  {dxyData.trend === 'SIDEWAY' && '↔ SIDEWAY'}
+                </span>
+              </div>
+              <div className="dxy-rsi">
+                <span className="label">RSI</span>
+                <span className="value">{dxyData.rsi}</span>
+              </div>
+            </div>
+            <p className="dxy-interpretation">{dxyData.interpretation}</p>
+          </section>
+        )}
+
         {/* Signal Section */}
         <section className="card signal-card">
           <h2>📊 Trading Signals</h2>
@@ -201,80 +224,6 @@ export default function Dashboard() {
                 </table>
               </div>
             </>
-          )}
-        </section>
-
-        {/* Risk Calculator Section */}
-        <section className="card risk-card">
-          <h2>💰 Risk Calculator</h2>
-
-          <div className="risk-inputs">
-            <div className="input-group">
-              <label>Account Balance ($)</label>
-              <input
-                type="number"
-                value={accountBalance}
-                onChange={(e) => setAccountBalance(e.target.value)}
-                placeholder="10000"
-              />
-            </div>
-
-            <div className="input-group">
-              <label>Risk Per Trade (%)</label>
-              <input
-                type="number"
-                value={riskPercent}
-                onChange={(e) => setRiskPercent(e.target.value)}
-                placeholder="1"
-                step="0.1"
-              />
-            </div>
-
-            <button className="calculate-btn" onClick={calculateRisk}>
-              Calculate Risk
-            </button>
-          </div>
-
-          {riskData && !riskData.message && (
-            <div className="risk-results">
-              <div className="risk-item">
-                <span className="label">Direction:</span>
-                <span className={`value ${riskData.direction?.toLowerCase()}`}>
-                  {riskData.direction}
-                </span>
-              </div>
-              <div className="risk-item">
-                <span className="label">Entry Price:</span>
-                <span className="value">${riskData.entry_price}</span>
-              </div>
-              <div className="risk-item">
-                <span className="label">Stop Loss:</span>
-                <span className="value sl">${riskData.stop_loss}</span>
-              </div>
-              <div className="risk-item">
-                <span className="label">Take Profit:</span>
-                <span className="value tp">${riskData.take_profit}</span>
-              </div>
-              <div className="risk-item highlight">
-                <span className="label">Position Size:</span>
-                <span className="value">{riskData.position_size_lots} Lots</span>
-              </div>
-              <div className="risk-item">
-                <span className="label">Risk Amount:</span>
-                <span className="value">${riskData.risk_amount}</span>
-              </div>
-              <div className="risk-item">
-                <span className="label">Potential Profit:</span>
-                <span className="value profit">${riskData.potential_profit}</span>
-              </div>
-            </div>
-          )}
-
-          {riskData && riskData.message && (
-            <div className="risk-message">
-              <p>{riskData.message}</p>
-              <p className="hint">{riskData.recommendation}</p>
-            </div>
           )}
         </section>
       </div>
