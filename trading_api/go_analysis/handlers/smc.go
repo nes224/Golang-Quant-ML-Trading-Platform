@@ -18,28 +18,73 @@ func AnalyzeSMC(c *gin.Context) {
 
 	ohlc := req.OHLC
 
-	// Identify swing points
-	swingHighs, swingLows := utils.IdentifySwingPoints(ohlc, 5, 5)
+	// Use goroutines for parallel SMC analysis
+	type smcResult struct {
+		swingHighs   []bool
+		swingLows    []bool
+		fvgBullish   []bool
+		fvgBearish   []bool
+		fvgZones     []models.Zone
+		obBullish    []bool
+		obBearish    []bool
+		obZones      []models.Zone
+		srZones      []models.Zone
+	}
 
-	// Identify FVG
-	fvgBullish, fvgBearish, fvgZones := utils.IdentifyFVG(ohlc)
+	resultChan := make(chan smcResult, 1)
 
-	// Identify Order Blocks
-	obBullish, obBearish, obZones := utils.IdentifyOrderBlocks(ohlc)
+	go func() {
+		var r smcResult
+		done := make(chan bool, 4)
 
-	// Identify S/R Zones
-	srZones := utils.IdentifySRZones(ohlc, swingHighs, swingLows)
+		// Swing points (needed for S/R zones)
+		go func() {
+			r.swingHighs, r.swingLows = utils.IdentifySwingPoints(ohlc, 5, 5)
+			done <- true
+		}()
+
+		// FVG analysis
+		go func() {
+			r.fvgBullish, r.fvgBearish, r.fvgZones = utils.IdentifyFVG(ohlc)
+			done <- true
+		}()
+
+		// Order Blocks analysis
+		go func() {
+			r.obBullish, r.obBearish, r.obZones = utils.IdentifyOrderBlocks(ohlc)
+			done <- true
+		}()
+
+		// Wait for swing points before calculating S/R zones
+		<-done // Wait for swing points
+
+		// S/R Zones (depends on swing points)
+		go func() {
+			r.srZones = utils.IdentifySRZones(ohlc, r.swingHighs, r.swingLows)
+			done <- true
+		}()
+
+		// Wait for remaining goroutines
+		for i := 0; i < 3; i++ {
+			<-done
+		}
+
+		resultChan <- r
+	}()
+
+	// Get result from channel
+	r := <-resultChan
 
 	response := models.SMCResponse{
-		SwingHighs:   swingHighs,
-		SwingLows:    swingLows,
-		FVGBullish:   fvgBullish,
-		FVGBearish:   fvgBearish,
-		OBBullish:    obBullish,
-		OBBearish:    obBearish,
-		FVGZones:     fvgZones,
-		OBZones:      obZones,
-		SRZones:      srZones,
+		SwingHighs:   r.swingHighs,
+		SwingLows:    r.swingLows,
+		FVGBullish:   r.fvgBullish,
+		FVGBearish:   r.fvgBearish,
+		OBBullish:    r.obBullish,
+		OBBearish:    r.obBearish,
+		FVGZones:     r.fvgZones,
+		OBZones:      r.obZones,
+		SRZones:      r.srZones,
 	}
 
 	c.JSON(http.StatusOK, response)

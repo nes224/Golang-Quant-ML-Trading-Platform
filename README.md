@@ -3,7 +3,7 @@
 A high-performance trading bot for XAU/USD (Gold) featuring Smart Money Concepts (SMC), Price Action analysis, and real-time signal generation.
 
 ## 🚀 Features
-- **Multi-Timeframe Analysis:** 1m, 5m, 15m, 30m, 1h, 4h, 1d
+- **Multi-Timeframe Analysis:** 5m, 15m, 30m, 1h, 4h, 1d
 - **Smart Money Concepts:** FVG (Fair Value Gaps), Order Blocks, Liquidity Sweeps
 - **Price Action:** Candlestick patterns, Support/Resistance zones
 - **Database Caching:** PostgreSQL integration for fast historical data access

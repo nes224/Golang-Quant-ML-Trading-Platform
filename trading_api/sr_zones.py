@@ -9,32 +9,33 @@ def identify_sr_zones(df, zone_threshold=0.002, min_touches=2):
     if df is None or df.empty or len(df) < 20:
         return df, []
     
+    # DISABLED: Go API doesn't return S/R zones yet
     # Try Go API first
-    try:
-        from go_client import go_client
-        
-        if go_client.health_check():
-            result = go_client.analyze_smc(df)
-            
-            if result and 'sr_zones' in result:
-                # Normalize keys for compatibility (Rust uses zone_type, Python uses type)
-                zones = result['sr_zones']
-                current_price = df['Close'].iloc[-1]
-                
-                for zone in zones:
-                    if 'zone_type' in zone:
-                        zone['type'] = zone['zone_type']
-                    # Ensure distance is calculated relative to current price
-                    zone['distance'] = abs(current_price - zone['level'])
-                
-                # Sort by distance (nearest first)
-                zones.sort(key=lambda x: x['distance'])
-                
-                return df, zones
-    except Exception as e:
-        print(f"Go API unavailable for S/R zones, using Python fallback: {e}")
+    # try:
+    #     from go_client import go_client
+    #     
+    #     if go_client.health_check():
+    #         result = go_client.analyze_smc(df)
+    #         
+    #         if result and 'sr_zones' in result:
+    #             # Normalize keys for compatibility (Rust uses zone_type, Python uses type)
+    #             zones = result['sr_zones']
+    #             current_price = df['Close'].iloc[-1]
+    #             
+    #             for zone in zones:
+    #                 if 'zone_type' in zone:
+    #                     zone['type'] = zone['zone_type']
+    #                 # Ensure distance is calculated relative to current price
+    #                 zone['distance'] = abs(current_price - zone['level'])
+    #             
+    #             # Sort by distance (nearest first)
+    #             zones.sort(key=lambda x: x['distance'])
+    #             
+    #             return df, zones
+    # except Exception as e:
+    #     print(f"Go API unavailable for S/R zones, using Python fallback: {e}")
 
-    # Python fallback
+    # Python fallback (ALWAYS USE THIS FOR NOW)
     # Get all swing points
     swing_highs = df[df.get('Is_Swing_High', False) == True]['High'].values
     swing_lows = df[df.get('Is_Swing_Low', False) == True]['Low'].values

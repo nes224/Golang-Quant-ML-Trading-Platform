@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [dxyData, setDxyData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [refreshingTF, setRefreshingTF] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState('GC=F'); // GC=F for Gold, BTC-USD for Bitcoin
 
   // Fetch signal data and connect to WebSocket
@@ -82,6 +83,32 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error fetching signal:', error);
       setLoading(false);
+    }
+  };
+
+  const refreshSingleTF = async (tf: string) => {
+    setRefreshingTF(tf);
+    try {
+      const res = await fetch(`http://localhost:8000/signal/${tf}?symbol=${selectedSymbol}`);
+      const data = await res.json();
+
+      setSignalData((prev: any) => {
+        if (!prev || !prev.timeframes) return prev;
+
+        return {
+          ...prev,
+          timeframes: {
+            ...prev.timeframes,
+            [data.timeframe]: data.data
+          }
+        };
+      });
+
+      setLastUpdate(new Date());
+    } catch (error) {
+      console.error(`Error refreshing ${tf}:`, error);
+    } finally {
+      setRefreshingTF(null);
     }
   };
 
@@ -202,12 +229,14 @@ export default function Dashboard() {
                       <th>S/R Zones</th>
                       <th>FVG Zones</th>
                       <th>OB Zones</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {['1d', '4h', '1h', '30m', '15m'].map((tf) => {
+                    {['1d', '4h', '1h', '30m', '15m', '5m'].map((tf) => {
                       const data = signalData.timeframes[tf];
                       if (!data) return null;
+                      const isRefreshing = refreshingTF === tf;
                       return (
                         <tr key={tf}>
                           <td className="tf-cell">{tf}</td>
@@ -219,6 +248,16 @@ export default function Dashboard() {
                           <td className="sr-zone-cell">{data.sr_zones || 'None'}</td>
                           <td className="fvg-zone-cell">{data.fvg_zones || 'None'}</td>
                           <td className="ob-zone-cell">{data.ob_zones || 'None'}</td>
+                          <td className="action-cell">
+                            <button
+                              className={`refresh-btn ${isRefreshing ? 'refreshing' : ''}`}
+                              onClick={() => refreshSingleTF(tf)}
+                              disabled={isRefreshing}
+                              title={`Refresh ${tf} analysis`}
+                            >
+                              {isRefreshing ? '⏳' : '🔄'}
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
