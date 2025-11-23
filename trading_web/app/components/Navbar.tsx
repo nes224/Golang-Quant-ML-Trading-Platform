@@ -23,6 +23,9 @@ export default function Navbar() {
                 <Link href="/checklist" className={`nav-link ${pathname === '/checklist' ? 'active' : ''}`}>
                     Checklist
                 </Link>
+                <Link href="/news" className={`nav-link ${pathname === '/news' ? 'active' : ''}`}>
+                    News
+                </Link>
             </div>
         </nav>
     );

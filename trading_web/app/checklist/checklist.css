@@ -29,13 +29,15 @@
 
 .checklist-content {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 3fr;
+    /* Checklist 25%, Chart 75% */
     gap: 24px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
     .checklist-content {
         grid-template-columns: 1fr;
+        /* Stack on smaller screens */
     }
 }
 
@@ -54,6 +56,8 @@
     align-items: center;
     padding: 12px 0;
     border-bottom: 1px solid #2a2e39;
+    gap: 16px;
+    /* Add gap between text and controls */
 }
 
 .checklist-item:last-child {
@@ -63,12 +67,17 @@
 .item-name {
     color: #e0e3eb;
     font-size: 0.95rem;
+    flex: 1;
+    /* Allow text to take available space */
+    padding-right: 12px;
 }
 
 .item-controls {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-shrink: 0;
+    /* Prevent controls from shrinking */
 }
 
 .control-btn {

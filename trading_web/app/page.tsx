@@ -144,9 +144,12 @@ export default function Dashboard() {
     }
   };
 
+  // Fetch data on mount and when dependencies change
   useEffect(() => {
     fetchCandleData();
+  }, [selectedTimeframe, selectedSymbol]);
 
+  useEffect(() => {
     // WebSocket Connection for real-time updates
     const ws = new WebSocket('ws://localhost:8000/ws');
 
@@ -159,11 +162,14 @@ export default function Dashboard() {
         const data = JSON.parse(event.data);
 
         if (data.type === 'candle_update' && data.timeframe === selectedTimeframe) {
-          console.log('Candle update:', data);
-          setCandleData(data);
+          // Only update if the timestamp is newer or same (live update)
+          setCandleData((prevData: any) => {
+            // Simple replacement for now, can be optimized to merge
+            return data;
+          });
         }
       } catch (error) {
-        console.error('WebSocket error:', error);
+        console.error('WebSocket message parsing error:', error);
       }
     };
 
@@ -176,9 +182,11 @@ export default function Dashboard() {
     };
 
     return () => {
-      ws.close();
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
     };
-  }, [selectedTimeframe, selectedSymbol]);
+  }, [selectedTimeframe]);
 
   // Render chart when data changes
   useEffect(() => {

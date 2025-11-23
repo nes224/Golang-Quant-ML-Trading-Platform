@@ -13,11 +13,14 @@ export default function ChecklistPage() {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const chartRef = useRef<HTMLDivElement>(null);
 
+    const [plotlyLoaded, setPlotlyLoaded] = useState(false);
+
     // Load Plotly
     useEffect(() => {
         const script = document.createElement('script');
         script.src = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
         script.async = true;
+        script.onload = () => setPlotlyLoaded(true);
         document.body.appendChild(script);
 
         return () => {
@@ -44,10 +47,10 @@ export default function ChecklistPage() {
     }, [selectedMonth]);
 
     useEffect(() => {
-        if (data && chartRef.current && typeof Plotly !== 'undefined') {
+        if (data && chartRef.current && plotlyLoaded) {
             renderChart();
         }
-    }, [data]);
+    }, [data, plotlyLoaded]);
 
     const updateCount = async (item: string, change: number) => {
         try {
