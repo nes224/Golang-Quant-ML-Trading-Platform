@@ -33,22 +33,60 @@
 - **Visualization**: Bar chart showing error distribution
 - **Database**: PostgreSQL with monthly partitioning
 
-### 4. Backend Infrastructure
+### 4. News Analysis System
+- **News Management**:
+  - CRUD operations for news articles
+  - Date, time, source, title, content, URL tracking
+  - AI analysis results storage
+  - Sentiment classification (POSITIVE/NEGATIVE/NEUTRAL)
+  - Impact score (1-10)
+  - Tag-based categorization
+- **Search & Filter**:
+  - Keyword search in title and content
+  - Date range filtering
+  - Sentiment filtering
+  - Source filtering
+  - Tag-based filtering
+- **Database**: PostgreSQL `news_analysis` table
+- **API Endpoints**:
+  - `POST /news` - Create news entry
+  - `GET /news` - Get all news (with pagination)
+  - `GET /news/{id}` - Get specific news
+  - `PUT /news/{id}` - Update news
+  - `DELETE /news/{id}` - Delete news
+  - `GET /news/search` - Advanced search
+
+### 5. Backend Infrastructure
 - **Database**: PostgreSQL with proper schema
   - `journal_entries` table
   - `checklist_monthly` table
+  - `news_analysis` table
   - Migration from JSON files (automatic)
 - **API Endpoints**:
   - `/candlestick/{timeframe}` - Chart data
+  - `/multi-tf-trend` - Multi-timeframe trend analysis
   - `/journal` - CRUD operations
   - `/checklist` - Error tracking
+  - `/news` - News management
   - `/ws` - WebSocket for real-time updates
 - **Data Sources**: 
   - Yahoo Finance (primary)
   - MetaTrader5 (optional)
 - **Caching System**: Smart incremental sync with database
 
-### 5. Frontend
+### 6. Multi-Timeframe Trend Indicator
+- **Trend Analysis**:
+  - Automatic trend detection for 15M, 30M, 1H, 4H, 1D
+  - Trend channel detection using linear regression
+  - Trend direction: UPTREND/DOWNTREND/SIDEWAYS
+  - Trend strength calculation (0-100)
+- **UI Display**:
+  - Compact inline indicator
+  - Color-coded trends (Green/Red/Orange)
+  - Hover tooltips for details
+  - Auto-refresh every 5 minutes
+
+### 7. Frontend
 - **Framework**: Next.js 14 with TypeScript
 - **Styling**: Custom CSS with dark theme
 - **Navigation**: Global navbar with active state
@@ -111,6 +149,31 @@
   - Trade recommendation engine
   - Risk assessment AI
 
+- [ ] **News Analysis System Enhancement**
+  - [ ] **Frontend UI**
+    - News management page (similar to Journal/Checklist)
+    - Create/Edit/Delete news interface
+    - Advanced search and filtering UI
+    - News timeline view
+    - Sentiment distribution charts
+  - [ ] **Claude AI Integration**
+    - Auto-analyze news content
+    - Generate sentiment analysis
+    - Calculate impact score
+    - Extract relevant tags automatically
+    - Batch processing for multiple news
+  - [ ] **Google Sheets Integration**
+    - Import news from Google Sheets
+    - Export analysis results to Sheets
+    - Two-way sync functionality
+    - Template sheet for news input
+  - [ ] **Alert System**
+    - High-impact news notifications
+    - Sentiment change alerts
+    - Custom keyword alerts
+    - Email/SMS integration
+    - Desktop notifications
+
 ### Priority 5: Mobile & Collaboration
 - [ ] **Mobile App**
   - React Native or PWA
@@ -164,6 +227,8 @@ NesHedgeFund/
 │   ├── db_manager.py        # PostgreSQL operations
 │   ├── journal_manager.py   # Journal business logic
 │   ├── checklist_manager.py # Checklist business logic
+│   ├── news_manager.py      # News analysis management
+│   ├── trend_detection.py   # Multi-TF trend analysis
 │   ├── data_loader.py       # Market data fetching
 │   ├── key_levels.py        # Technical analysis
 │   ├── fvg_detection.py     # FVG strategy
@@ -175,11 +240,14 @@ NesHedgeFund/
 │       ├── journal/         # Journal page
 │       ├── checklist/       # Checklist page
 │       └── components/      # Reusable components
+│           ├── Navbar.tsx
+│           └── MultiTFIndicator.tsx
 │
 └── Database: PostgreSQL
     ├── journal_entries
     ├── checklist_monthly
-    └── (future tables...)
+    ├── news_analysis
+    └── market_data (cache)
 ```
 
 ---
@@ -202,16 +270,34 @@ NesHedgeFund/
 
 ## 📝 Notes
 
-### Recent Fixes
-1. **TF 1H Issue (2025-11-23)**:
+### Recent Updates
+1. **News Analysis System (2025-11-23)**:
+   - Added complete CRUD API for news management
+   - PostgreSQL `news_analysis` table with full-text search
+   - Support for AI analysis results, sentiment, and impact scoring
+   - Tag-based categorization system
+   - Advanced search with multiple filters
+
+2. **Multi-Timeframe Trend Indicator (2025-11-23)**:
+   - Automatic trend detection across 5 timeframes (15M-1D)
+   - Trend channel detection using optimized linear regression
+   - Compact inline UI display with color-coded trends
+   - Auto-refresh every 5 minutes
+
+3. **TF 1H Issue (2025-11-23)**:
    - Problem: Too many pivot points, no FVG zones
    - Solution: Adjusted pivot bars (3→7), FVG parameters (lookback=15, multiplier=1.2)
    - Result: Chart now displays correctly like other timeframes
 
-2. **Database Migration**:
+4. **Database Migration**:
    - Migrated from JSON files to PostgreSQL
    - Automatic data import on first run
    - Backup files created (.bak)
+
+5. **Cross-Platform Support**:
+   - Created startup scripts for Windows and MacOS
+   - Easy switching between Yahoo Finance and MT5
+   - Environment-based configuration
 
 ### Configuration
 - Default symbol: GC=F (Gold Futures)

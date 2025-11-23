@@ -229,13 +229,22 @@ data_manager = None
 
 @app.on_event("startup")
 async def startup_event():
-    global data_manager
+    global data_manager, journal_manager, checklist_manager
+    
     # Determine symbol from config
     symbol = "XAUUSD" if Config.DATA_SOURCE == "MT5" else "GC=F"
     
     # Initialize Data Manager
     data_manager = DataManager(symbol)
     await data_manager.initialize()
+    
+    # Initialize Journal Manager
+    journal_manager = JournalManager()
+    
+    # Initialize Checklist Manager
+    checklist_manager = ChecklistManager()
+    
+    print("[OK] All managers initialized successfully")
     
 def read_root():
     return {
@@ -460,6 +469,114 @@ class ChecklistUpdate(BaseModel):
 def update_checklist(update: ChecklistUpdate):
     try:
         return checklist_manager.update_count(update.item, update.change, update.month)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- News Analysis API ---
+
+from news_manager import news_manager
+
+class NewsCreate(BaseModel):
+    date: str
+    time: Optional[str] = None
+    source: Optional[str] = None
+    title: str
+    content: str
+    url: Optional[str] = None
+    ai_analysis: Optional[str] = None
+    sentiment: Optional[str] = None
+    impact_score: Optional[int] = None
+    tags: Optional[List[str]] = []
+
+class NewsUpdate(BaseModel):
+    date: Optional[str] = None
+    time: Optional[str] = None
+    source: Optional[str] = None
+    title: Optional[str] = None
+    content: Optional[str] = None
+    url: Optional[str] = None
+    ai_analysis: Optional[str] = None
+    sentiment: Optional[str] = None
+    impact_score: Optional[int] = None
+    tags: Optional[List[str]] = None
+
+@app.post("/news", tags=["News"])
+def create_news(news: NewsCreate):
+    """Create a new news entry"""
+    try:
+        return news_manager.create_news(news.dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/news/{news_id}", tags=["News"])
+def get_news(news_id: int):
+    """Get a single news entry by ID"""
+    try:
+        news = news_manager.get_news(news_id)
+        if not news:
+            raise HTTPException(status_code=404, detail="News not found")
+        return news
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/news", tags=["News"])
+def get_all_news(limit: int = Query(default=100, le=500), offset: int = Query(default=0)):
+    """Get all news entries with pagination"""
+    try:
+        return news_manager.get_all_news(limit=limit, offset=offset)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/news/{news_id}", tags=["News"])
+def update_news(news_id: int, updates: NewsUpdate):
+    """Update a news entry"""
+    try:
+        update_dict = {k: v for k, v in updates.dict().items() if v is not None}
+        if not update_dict:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        return news_manager.update_news(news_id, update_dict)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/news/{news_id}", tags=["News"])
+def delete_news(news_id: int):
+    """Delete a news entry"""
+    try:
+        success = news_manager.delete_news(news_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="News not found")
+        return {"message": "News deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/news/search", tags=["News"])
+def search_news(
+    keyword: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    sentiment: Optional[str] = None,
+    source: Optional[str] = None,
+    tags: Optional[str] = None,  # Comma-separated tags
+    limit: int = Query(default=100, le=500)
+):
+    """Search news with various filters"""
+    try:
+        tag_list = tags.split(',') if tags else None
+        return news_manager.search_news(
+            keyword=keyword,
+            date_from=date_from,
+            date_to=date_to,
+            sentiment=sentiment,
+            source=source,
+            tags=tag_list,
+            limit=limit
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
