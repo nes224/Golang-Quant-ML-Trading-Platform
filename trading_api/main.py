@@ -580,31 +580,7 @@ def search_news(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/news/{news_id}/analyze", tags=["News"])
-async def analyze_news(news_id: int):
-    """Analyze a news entry using AI"""
-    try:
-        # 1. Get news content
-        news = news_manager.get_news(news_id)
-        if not news:
-            raise HTTPException(status_code=404, detail="News not found")
-        
-        # 2. Call AI Service
-        from ai_service import ai_service
-        analysis_result = await ai_service.analyze_news(news['title'], news['content'])
-        
-        # 3. Update news with results
-        updated_news = news_manager.update_news(news_id, {
-            'ai_analysis': analysis_result['ai_analysis'],
-            'sentiment': analysis_result['sentiment'],
-            'impact_score': analysis_result['impact_score']
-        })
-        
-        return updated_news
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

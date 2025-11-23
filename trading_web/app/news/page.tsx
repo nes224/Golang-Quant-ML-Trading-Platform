@@ -36,7 +36,10 @@ export default function NewsPage() {
         title: '',
         content: '',
         url: '',
-        tags: ''
+        tags: '',
+        ai_analysis: '',
+        sentiment: '',
+        impact_score: ''
     });
 
     useEffect(() => {
@@ -54,7 +57,13 @@ export default function NewsPage() {
 
             const response = await fetch(url);
             const data = await response.json();
-            setNewsList(data);
+
+            if (Array.isArray(data)) {
+                setNewsList(data);
+            } else {
+                console.error('API returned non-array data:', data);
+                setNewsList([]);
+            }
         } catch (error) {
             console.error('Error fetching news:', error);
         } finally {
@@ -67,7 +76,8 @@ export default function NewsPage() {
         try {
             const payload = {
                 ...formData,
-                tags: formData.tags.split(',').map(t => t.trim()).filter(t => t)
+                tags: formData.tags.split(',').map(t => t.trim()).filter(t => t),
+                impact_score: formData.impact_score ? parseInt(formData.impact_score) : null
             };
 
             const response = await fetch('http://localhost:8000/news', {
@@ -85,28 +95,15 @@ export default function NewsPage() {
                     title: '',
                     content: '',
                     url: '',
-                    tags: ''
+                    tags: '',
+                    ai_analysis: '',
+                    sentiment: '',
+                    impact_score: ''
                 });
                 fetchNews(); // Refresh list
             }
         } catch (error) {
             console.error('Error creating news:', error);
-        }
-    };
-
-    const analyzeNews = async (id: number) => {
-        try {
-            setLoading(true);
-            const response = await fetch(`http://localhost:8000/news/${id}/analyze`, {
-                method: 'POST'
-            });
-
-            if (response.ok) {
-                fetchNews(); // Refresh list to show results
-            }
-        } catch (error) {
-            console.error('Error analyzing news:', error);
-            setLoading(false);
         }
     };
 
@@ -192,20 +189,19 @@ export default function NewsPage() {
                                     </div>
                                 )}
 
-                                {news.sentiment ? (
+                                {news.sentiment && (
                                     <div className={`ai-badge ${getSentimentColor(news.sentiment)}`}>
                                         <span>{news.sentiment}</span>
                                         {news.impact_score && (
                                             <span className="impact-score">Impact: {news.impact_score}/10</span>
                                         )}
                                     </div>
-                                ) : (
-                                    <button
-                                        className="analyze-btn"
-                                        onClick={() => analyzeNews(news.id)}
-                                    >
-                                        ⚡ Analyze with AI
-                                    </button>
+                                )}
+
+                                {news.ai_analysis && (
+                                    <div className="analysis-preview" style={{ marginTop: '12px', fontSize: '0.9rem', color: '#b2b5be', borderTop: '1px solid #2a2e39', paddingTop: '12px' }}>
+                                        <strong>Analysis:</strong> {news.ai_analysis}
+                                    </div>
                                 )}
                             </div>
                         ))}
@@ -279,6 +275,44 @@ export default function NewsPage() {
                                         value={formData.content}
                                         onChange={e => setFormData({ ...formData, content: e.target.value })}
                                     ></textarea>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Manual Analysis (Optional)</label>
+                                    <textarea
+                                        className="form-textarea"
+                                        style={{ minHeight: '80px' }}
+                                        placeholder="Enter your analysis here..."
+                                        value={formData.ai_analysis}
+                                        onChange={e => setFormData({ ...formData, ai_analysis: e.target.value })}
+                                    ></textarea>
+                                </div>
+
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Sentiment</label>
+                                        <select
+                                            className="form-select"
+                                            value={formData.sentiment}
+                                            onChange={e => setFormData({ ...formData, sentiment: e.target.value })}
+                                        >
+                                            <option value="">Select Sentiment</option>
+                                            <option value="POSITIVE">Positive</option>
+                                            <option value="NEGATIVE">Negative</option>
+                                            <option value="NEUTRAL">Neutral</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Impact Score (1-10)</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="10"
+                                            className="form-input"
+                                            value={formData.impact_score}
+                                            onChange={e => setFormData({ ...formData, impact_score: e.target.value })}
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="form-group">
