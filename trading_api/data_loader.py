@@ -4,7 +4,7 @@ import MetaTrader5 as mt5
 from datetime import datetime
 from config import Config
 
-def fetch_data_yahoo(symbol="GC=F", period="1y", interval="1d"):
+def fetch_data_yahoo(symbol="GC=F", period="2mo", interval="1d"):
     """
     Fetches historical data from yfinance.
     Default symbol 'GC=F' is Gold Futures (close proxy for XAU/USD).
@@ -47,7 +47,7 @@ def fetch_data_yahoo(symbol="GC=F", period="1y", interval="1d"):
         print(f"Error fetching data from Yahoo: {e}")
         return None
 
-def fetch_data_mt5(symbol="XAUUSD", period="1y", interval="1d"):
+def fetch_data_mt5(symbol="XAUUSD", period="2mo", interval="1d"):
     """
     Fetches historical data from MetaTrader 5.
     """
@@ -94,14 +94,13 @@ def fetch_data_mt5(symbol="XAUUSD", period="1y", interval="1d"):
     
     # Calculate bars per day for each timeframe
     bars_per_day = {
-        "1m": 1440,
-        "5m": 288,
-        "15m": 96,
-        "30m": 48,
-        "1h": 24,
-        "4h": 6,
-        "1d": 1,
-        "1w": 0.2
+        "1m": 500,
+        "5m": 144,
+        "15m": 56,
+        "30m": 28,
+        "1h": 14,
+        "4h": 10,
+        "1d": 10,
     }
     
     daily_bars = bars_per_day.get(interval, 1)

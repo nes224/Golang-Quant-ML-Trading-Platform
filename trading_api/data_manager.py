@@ -7,7 +7,7 @@ import asyncio
 class DataManager:
     def __init__(self, symbol="GC=F"):
         self.symbol = symbol
-        self.timeframes = ["4h", "1h", "30m", "15m"]
+        self.timeframes = ["4h", "1h", "30m", "15m", "5m"]
         self.data = {} # Stores DataFrame for each timeframe
         self.last_update_time = {} # Stores last update timestamp for each TF
         self.initialized = False
@@ -31,7 +31,8 @@ class DataManager:
         for i, tf in enumerate(self.timeframes):
             if results[i] is not None and not results[i].empty:
                 self.data[tf] = results[i]
-                self.last_update_time[tf] = results[i].iloc[-1]['Date']
+                # Date is in index, not column
+                self.last_update_time[tf] = results[i].index[-1]
                 print(f"Loaded {tf}: {len(results[i])} bars")
             else:
                 print(f"Failed to load data for {tf}")

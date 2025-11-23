@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import './dashboard.css';
 import './dxy.css';
+import './timeframe-cards.css';
+import './market-hours.css';
+import { MarketHours } from './components/MarketHours';
 
 export default function Dashboard() {
   const [signalData, setSignalData] = useState<any>(null);
@@ -10,7 +13,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [refreshingTF, setRefreshingTF] = useState<string | null>(null);
-  const [selectedSymbol, setSelectedSymbol] = useState('GC=F'); // GC=F for Gold, BTC-USD for Bitcoin
+  const [selectedSymbol, setSelectedSymbol] = useState('XAUUSD=X'); // Default to Spot Gold
 
   // Fetch signal data and connect to WebSocket
   useEffect(() => {
@@ -185,6 +188,39 @@ export default function Dashboard() {
           </section>
         )}
 
+        {/* Header with Symbol Selector */}
+        <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h1>Trading Dashboard</h1>
+          <div className="symbol-selector">
+            <select
+              value={selectedSymbol}
+              onChange={(e) => {
+                setSelectedSymbol(e.target.value);
+                setLoading(true);
+              }}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '8px',
+                background: '#1e2139',
+                color: '#fff',
+                border: '1px solid rgba(255,255,255,0.1)',
+                fontSize: '1rem',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="XAUUSD=X">Gold (XAUUSD)</option>
+              <option value="GC=F">Gold Futures (GC=F)</option>
+              <option value="BTC-USD">Bitcoin (BTC)</option>
+              <option value="ETH-USD">Ethereum (ETH)</option>
+              <option value="EURUSD=X">EUR/USD</option>
+              <option value="GBPUSD=X">GBP/USD</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Market Hours Section */}
+        <MarketHours />
+
         {/* Signal Section */}
         <section className="card signal-card">
           <h2>📊 Trading Signals</h2>
@@ -215,54 +251,98 @@ export default function Dashboard() {
                 </ul>
               </div>
 
-              <div className="timeframes-table">
+              <div className="timeframes-section">
                 <h3>Multi-Timeframe Analysis</h3>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>TF</th>
-                      <th>Price</th>
-                      <th>Trend</th>
-                      <th>RSI</th>
-                      <th>Signal</th>
-                      <th>Price Action</th>
-                      <th>S/R Zones</th>
-                      <th>FVG Zones</th>
-                      <th>OB Zones</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {['1d', '4h', '1h', '30m', '15m', '5m'].map((tf) => {
-                      const data = signalData.timeframes[tf];
-                      if (!data) return null;
-                      const isRefreshing = refreshingTF === tf;
-                      return (
-                        <tr key={tf}>
-                          <td className="tf-cell">{tf}</td>
-                          <td>${data.price?.toFixed(2)}</td>
-                          <td className={`trend-${data.trend?.toLowerCase()}`}>{data.trend}</td>
-                          <td>{data.rsi}</td>
-                          <td className={`signal-${data.signal?.toLowerCase()}`}>{data.signal}</td>
-                          <td className="pa-cell">{data.price_action}</td>
-                          <td className="sr-zone-cell">{data.sr_zones || 'None'}</td>
-                          <td className="fvg-zone-cell">{data.fvg_zones || 'None'}</td>
-                          <td className="ob-zone-cell">{data.ob_zones || 'None'}</td>
-                          <td className="action-cell">
-                            <button
-                              className={`refresh-btn ${isRefreshing ? 'refreshing' : ''}`}
-                              onClick={() => refreshSingleTF(tf)}
-                              disabled={isRefreshing}
-                              title={`Refresh ${tf} analysis`}
-                            >
-                              {isRefreshing ? '⏳' : '🔄'}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+
+                <div className="timeframe-grid">
+                  {['1d', '4h', '1h', '30m', '15m', '5m'].map((tf) => {
+                    let data = signalData.timeframes[tf];
+
+                    // Fallback if data is missing to prevent card from disappearing
+                    if (!data) {
+                      data = {
+                        price: 0,
+                        trend: 'N/A',
+                        signal: 'WAIT',
+                        rsi: 0,
+                        price_action: 'Data Unavailable',
+                        sr_zones: 'None',
+                        fvg_zones: 'None',
+                        ob_zones: 'None',
+                        liquidity_sweeps: 'None'
+                      };
+                    }
+                    const isRefreshing = refreshingTF === tf;
+
+                    return (
+                      <div key={tf} className="tf-card">
+                        {/* Card Header */}
+                        <div className="tf-card-header">
+                          <span className="tf-badge">{tf}</span>
+                          <span className="tf-price">${data.price?.toFixed(2)}</span>
+                        </div>
+
+                        {/* Card Body */}
+                        <div className="tf-card-body">
+                          {/* Core Metrics */}
+                          <div className="metric-row">
+                            <span className={`trend-${data.trend?.toLowerCase()}`}>
+                              {data.trend === 'UP' ? '↑' : '↓'} {data.trend}
+                            </span>
+                            <span>RSI: {data.rsi}</span>
+                          </div>
+
+                          {/* Signal Badge */}
+                          <div className={`signal-badge signal-${data.signal?.toLowerCase()}`}>
+                            {data.signal === 'BUY' ? '🟢' : data.signal === 'SELL' ? '🔴' : '🟡'} {data.signal}
+                          </div>
+
+                          {/* Analysis Details */}
+                          <div className="analysis-section">
+                            <div className="analysis-item">
+                              <span className="label">📍 PA:</span>
+                              <span className="value">{data.price_action || 'None'}</span>
+                            </div>
+                            <div className="analysis-item">
+                              <span className="label">🎯 S/R:</span>
+                              <span className="value" title={data.sr_zones || 'None'}>
+                                {data.sr_zones || 'None'}
+                              </span>
+                            </div>
+                            <div className="analysis-item">
+                              <span className="label">💎 FVG:</span>
+                              <span className="value" title={data.fvg_zones || 'None'}>
+                                {data.fvg_zones || 'None'}
+                              </span>
+                            </div>
+                            <div className="analysis-item">
+                              <span className="label">📦 OB:</span>
+                              <span className="value" title={data.ob_zones || 'None'}>
+                                {data.ob_zones || 'None'}
+                              </span>
+                            </div>
+                            <div className="analysis-item">
+                              <span className="label">⚡ Sweep:</span>
+                              <span className="value">{data.liquidity_sweeps || 'None'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card Footer */}
+                        <div className="tf-card-footer">
+                          <button
+                            className={`refresh-btn ${isRefreshing ? 'refreshing' : ''}`}
+                            onClick={() => refreshSingleTF(tf)}
+                            disabled={isRefreshing}
+                            title={`Refresh ${tf} analysis`}
+                          >
+                            {isRefreshing ? '⏳ Refreshing...' : '🔄 Refresh'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </>
           )}

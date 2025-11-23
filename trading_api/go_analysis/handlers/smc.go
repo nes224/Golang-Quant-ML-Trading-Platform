@@ -20,28 +20,27 @@ func AnalyzeSMC(c *gin.Context) {
 
 	// Use goroutines for parallel SMC analysis
 	type smcResult struct {
-		swingHighs   []bool
-		swingLows    []bool
-		fvgBullish   []bool
-		fvgBearish   []bool
-		fvgZones     []models.Zone
-		obBullish    []bool
-		obBearish    []bool
-		obZones      []models.Zone
-		srZones      []models.Zone
+		swingHighs      []bool
+		swingLows       []bool
+		fvgBullish      []bool
+		fvgBearish      []bool
+		fvgZones        []models.Zone
+		obBullish       []bool
+		obBearish       []bool
+		obZones         []models.Zone
+		srZones         []models.Zone
+		liquiditySweeps []models.LiquiditySweep
 	}
 
 	resultChan := make(chan smcResult, 1)
 
 	go func() {
 		var r smcResult
-		done := make(chan bool, 4)
+		done := make(chan bool, 5)
 
-		// Swing points (needed for S/R zones)
-		go func() {
-			r.swingHighs, r.swingLows = utils.IdentifySwingPoints(ohlc, 5, 5)
-			done <- true
-		}()
+		// Swing points (needed for S/R zones and Sweeps)
+		// Run synchronously or wait specifically for it to avoid race conditions
+		r.swingHighs, r.swingLows = utils.IdentifySwingPoints(ohlc, 5, 5)
 
 		// FVG analysis
 		go func() {
@@ -55,17 +54,20 @@ func AnalyzeSMC(c *gin.Context) {
 			done <- true
 		}()
 
-		// Wait for swing points before calculating S/R zones
-		<-done // Wait for swing points
-
 		// S/R Zones (depends on swing points)
 		go func() {
 			r.srZones = utils.IdentifySRZones(ohlc, r.swingHighs, r.swingLows)
 			done <- true
 		}()
 
-		// Wait for remaining goroutines
-		for i := 0; i < 3; i++ {
+		// Liquidity Sweeps (depends on swing points)
+		go func() {
+			r.liquiditySweeps = utils.DetectLiquiditySweeps(ohlc, r.swingHighs, r.swingLows)
+			done <- true
+		}()
+
+		// Wait for all 4 parallel tasks (FVG, OB, S/R, Sweeps)
+		for i := 0; i < 4; i++ {
 			<-done
 		}
 
@@ -76,15 +78,16 @@ func AnalyzeSMC(c *gin.Context) {
 	r := <-resultChan
 
 	response := models.SMCResponse{
-		SwingHighs:   r.swingHighs,
-		SwingLows:    r.swingLows,
-		FVGBullish:   r.fvgBullish,
-		FVGBearish:   r.fvgBearish,
-		OBBullish:    r.obBullish,
-		OBBearish:    r.obBearish,
-		FVGZones:     r.fvgZones,
-		OBZones:      r.obZones,
-		SRZones:      r.srZones,
+		SwingHighs:      r.swingHighs,
+		SwingLows:       r.swingLows,
+		FVGBullish:      r.fvgBullish,
+		FVGBearish:      r.fvgBearish,
+		OBBullish:       r.obBullish,
+		OBBearish:       r.obBearish,
+		FVGZones:        r.fvgZones,
+		OBZones:         r.obZones,
+		SRZones:         r.srZones,
+		LiquiditySweeps: r.liquiditySweeps,
 	}
 
 	c.JSON(http.StatusOK, response)

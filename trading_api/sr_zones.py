@@ -1,104 +1,162 @@
 import pandas as pd
 import numpy as np
 
-def identify_sr_zones(df, zone_threshold=0.002, min_touches=2):
+def identify_sr_zones(df, zone_threshold=0.0005, min_touches=1):
     """
-    Identifies Support and Resistance Zones using Go API.
-    Falls back to Python if unavailable.
+    Identifies Support and Resistance Zones based on Price Action Rejection.
+    Focuses on Swing Points with significant wicks (Rejection) and Impulse moves.
     """
     if df is None or df.empty or len(df) < 20:
         return df, []
-    
-    # DISABLED: Go API doesn't return S/R zones yet
-    # Try Go API first
-    # try:
-    #     from go_client import go_client
-    #     
-    #     if go_client.health_check():
-    #         result = go_client.analyze_smc(df)
-    #         
-    #         if result and 'sr_zones' in result:
-    #             # Normalize keys for compatibility (Rust uses zone_type, Python uses type)
-    #             zones = result['sr_zones']
-    #             current_price = df['Close'].iloc[-1]
-    #             
-    #             for zone in zones:
-    #                 if 'zone_type' in zone:
-    #                     zone['type'] = zone['zone_type']
-    #                 # Ensure distance is calculated relative to current price
-    #                 zone['distance'] = abs(current_price - zone['level'])
-    #             
-    #             # Sort by distance (nearest first)
-    #             zones.sort(key=lambda x: x['distance'])
-    #             
-    #             return df, zones
-    # except Exception as e:
-    #     print(f"Go API unavailable for S/R zones, using Python fallback: {e}")
 
-    # Python fallback (ALWAYS USE THIS FOR NOW)
-    # Get all swing points
-    swing_highs = df[df.get('Is_Swing_High', False) == True]['High'].values
-    swing_lows = df[df.get('Is_Swing_Low', False) == True]['Low'].values
+    # 1. Calculate Candle Features for Rejection Detection
+    df['Body_Size'] = abs(df['Close'] - df['Open'])
+    df['Upper_Wick'] = df['High'] - df[['Open', 'Close']].max(axis=1)
+    df['Lower_Wick'] = df[['Open', 'Close']].min(axis=1) - df['Low']
+    df['Total_Range'] = df['High'] - df['Low']
     
-    # Combine all potential S/R levels
-    all_levels = list(swing_highs) + list(swing_lows)
+    # Avoid division by zero
+    avg_body = df['Body_Size'].mean()
     
-    if len(all_levels) == 0:
-        return df, []
+    # Define Rejection: Wick is significantly larger than body or total range
+    # Bullish Rejection (Long Lower Wick)
+    df['Is_Bullish_Rejection'] = (df['Lower_Wick'] > df['Body_Size'] * 1.0) & (df['Lower_Wick'] > df['Total_Range'] * 0.3)
     
-    # Cluster nearby levels into zones
+    # Bearish Rejection (Long Upper Wick)
+    df['Is_Bearish_Rejection'] = (df['Upper_Wick'] > df['Body_Size'] * 1.0) & (df['Upper_Wick'] > df['Total_Range'] * 0.3)
+
+    # 2. Identify Swing Points (Fractals) - 5 bar fractal (2 left, 2 right)
+    # Recalculate here to be sure, or use existing if reliable
+    df['Is_Swing_High'] = (df['High'] > df['High'].shift(1)) & \
+                          (df['High'] > df['High'].shift(2)) & \
+                          (df['High'] > df['High'].shift(-1)) & \
+                          (df['High'] > df['High'].shift(-2))
+                          
+    df['Is_Swing_Low'] = (df['Low'] < df['Low'].shift(1)) & \
+                         (df['Low'] < df['Low'].shift(2)) & \
+                         (df['Low'] < df['Low'].shift(-1)) & \
+                         (df['Low'] < df['Low'].shift(-2))
+
+    # 3. Filter High Quality Zones (Rejection + Swing)
+    potential_levels = []
+    
+    # Support: Swing Lows that are also Bullish Rejections
+    # We take the LOW of the candle as the key level
+    support_candidates = df[df['Is_Swing_Low']]
+    for idx, row in support_candidates.iterrows():
+        # Check for rejection qualities
+        is_rejection = row['Is_Bullish_Rejection']
+        
+        # Check Momentum (Next 3 candles should move up)
+        # We can't easily check 'future' in vector without lookahead, but we are analyzing history
+        # Let's check if price is higher 3 bars later
+        try:
+            future_idx = idx + 3
+            if future_idx < len(df):
+                future_close = df.loc[future_idx, 'Close']
+                if future_close > row['High']: # Price moved up past the high of the swing candle
+                    potential_levels.append({
+                        'level': row['Low'],
+                        'type': 'support',
+                        'is_rejection': is_rejection,
+                        'timestamp': idx
+                    })
+        except:
+            pass
+
+
+    # Resistance: Swing Highs that are also Bearish Rejections
+    # We take the HIGH of the candle as the key level
+    resistance_candidates = df[df['Is_Swing_High']]
+    for idx, row in resistance_candidates.iterrows():
+        is_rejection = row['Is_Bearish_Rejection']
+        
+        try:
+            future_idx = idx + 3
+            if future_idx < len(df):
+                future_close = df.loc[future_idx, 'Close']
+                if future_close < row['Low']: # Price moved down past the low of the swing candle
+                    potential_levels.append({
+                        'level': row['High'],
+                        'type': 'resistance',
+                        'is_rejection': is_rejection,
+                        'timestamp': idx
+                    })
+        except:
+            pass
+            
+    # If no strict levels found, fallback to raw swings (but prioritize recent ones)
+    if not potential_levels:
+        for idx, row in df[df['Is_Swing_Low']].iterrows():
+            potential_levels.append({'level': row['Low'], 'type': 'support', 'is_rejection': False})
+        for idx, row in df[df['Is_Swing_High']].iterrows():
+            potential_levels.append({'level': row['High'], 'type': 'resistance', 'is_rejection': False})
+
+    # 4. Cluster Levels
+    potential_levels.sort(key=lambda x: x['level'])
+    
     zones = []
-    used_indices = set()
-    
-    for i, level in enumerate(all_levels):
-        if i in used_indices:
-            continue
+    if not potential_levels:
+        return df, []
         
-        # Find all levels within threshold
-        tolerance = level * zone_threshold
-        cluster = [level]
-        cluster_indices = [i]
+    current_cluster = [potential_levels[0]]
+    
+    for i in range(1, len(potential_levels)):
+        item = potential_levels[i]
+        prev_item = current_cluster[-1]
         
-        for j, other_level in enumerate(all_levels):
-            if j <= i or j in used_indices:
-                continue
-            
-            if abs(other_level - level) <= tolerance:
-                cluster.append(other_level)
-                cluster_indices.append(j)
+        # Calculate percentage difference
+        diff_pct = abs(item['level'] - prev_item['level']) / prev_item['level']
         
-        # Only create zone if minimum touches met
-        if len(cluster) >= min_touches:
-            zone_level = np.mean(cluster)
-            zone_top = max(cluster)
-            zone_bottom = min(cluster)
+        if diff_pct <= zone_threshold:
+            current_cluster.append(item)
+        else:
+            zones.append(create_zone_from_cluster(current_cluster, df['Close'].iloc[-1]))
+            current_cluster = [item]
             
-            # Determine if support or resistance based on current price
-            current_price = df['Close'].iloc[-1]
-            zone_type = 'support' if zone_level < current_price else 'resistance'
-            
-            zones.append({
-                'level': round(zone_level, 2),
-                'type': zone_type,
-                'strength': len(cluster),
-                'top': round(zone_top, 2),
-                'bottom': round(zone_bottom, 2),
-                'distance': abs(current_price - zone_level)
-            })
-            
-            # Mark as used
-            used_indices.update(cluster_indices)
+    if current_cluster:
+        zones.append(create_zone_from_cluster(current_cluster, df['Close'].iloc[-1]))
+        
+    # Filter and Sort
+    # Prioritize zones with Rejection and multiple touches
+    zones = [z for z in zones if z['strength'] >= min_touches or z.get('has_rejection', False)]
     
-    # Sort by strength (most touches first)
-    zones.sort(key=lambda x: x['strength'], reverse=True)
-    
-    # Keep only top 5 strongest zones
-    zones = zones[:5]
-    
-    # Sort by distance from current price (nearest first)
+    # Sort by strength (touches) then distance
+    zones.sort(key=lambda x: (x.get('has_rejection', False), x['strength']), reverse=True)
+    zones = zones[:5] # Top 5
     zones.sort(key=lambda x: x['distance'])
     
     return df, zones
+
+def create_zone_from_cluster(cluster, current_price):
+    levels = [x['level'] for x in cluster]
+    avg_level = np.mean(levels)
+    min_level = min(levels)
+    max_level = max(levels)
+    
+    # Check if cluster contains rejection candles
+    has_rejection = any(x.get('is_rejection', False) for x in cluster)
+    
+    # Determine type
+    res_count = sum(1 for x in cluster if x['type'] == 'resistance')
+    sup_count = sum(1 for x in cluster if x['type'] == 'support')
+    
+    if res_count > sup_count:
+        z_type = 'resistance'
+    elif sup_count > res_count:
+        z_type = 'support'
+    else:
+        z_type = 'resistance' if avg_level > current_price else 'support'
+        
+    return {
+        'level': round(avg_level, 2),
+        'top': round(max_level, 2),
+        'bottom': round(min_level, 2),
+        'type': z_type,
+        'strength': len(cluster),
+        'distance': abs(current_price - avg_level),
+        'has_rejection': has_rejection
+    }
 
 
 def get_nearest_sr(df, zones, zone_type='both'):

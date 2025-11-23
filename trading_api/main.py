@@ -164,56 +164,7 @@ async def startup_event():
     # Start broadcast task
     asyncio.create_task(broadcast_market_data())
 
-# ... (AnalysisRequest class) ...
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to XAU/USD Trading Bot API. Use /analyze or /signal endpoints."}
-
-@app.get("/analyze")
-def analyze_market(
-    symbol: str = Query("GC=F", description="Symbol to analyze (e.g., GC=F, XAUUSD=X)"),
-    timeframe: str = Query("1d", description="Timeframe (1d, 4h, 1h, 30m, 15m, 5m, 1m)")
-):
-    """
-    Returns raw analysis data including indicators and structure.
-    """
-    # Use DataManager if available and symbol matches
-    global data_manager
-    if data_manager and data_manager.symbol == symbol and data_manager.initialized:
-        df = data_manager.get_data(timeframe)
-    else:
-        # Fallback for other symbols or if not initialized
-        # Adjust period based on timeframe constraints
-        if timeframe == "1m":
-            period = "5d"
-        elif timeframe in ["5m", "15m", "30m"]:
-            period = "1mo"
-        else:
-            period = "3mo"
-        df = fetch_data(symbol, period=period, interval=timeframe)
-    
-    if df is None:
-        raise HTTPException(status_code=404, detail="Data not found for symbol")
-    
-    df = calculate_indicators(df)
-    df = identify_structure(df)
-    df = check_signals(df)
-    
-    # Convert to dict for JSON response (tail 5)
-    latest_data = df.tail(5).to_dict(orient="records")
-    
-    # Handle NaN values for JSON serialization
-    for record in latest_data:
-        for key, value in record.items():
-            if pd.isna(value):
-                record[key] = None
-                
-    return {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "data": latest_data
-    }
 
 @app.get("/signal")
 def get_signal(
@@ -410,6 +361,21 @@ def get_signal(
                 zone_type = "🟢" if zone['zone_type'] == 'bullish' else "🔴"
                 ob_zones_display.append(f"{zone_type} {zone['bottom']:.2f}-{zone['top']:.2f}")
         
+        # Extract Liquidity Sweeps from Go API
+        sweeps_display = []
+        try:
+            from go_client import go_client
+            if go_client.health_check():
+                go_result = go_client.analyze_smc(df)
+                if go_result and 'liquidity_sweeps' in go_result:
+                    # Get last 3 sweeps
+                    for sweep in go_result['liquidity_sweeps'][-3:]:
+                        sweep_type = "🟢" if sweep['type'] == 'bullish' else "🔴"
+                        strength_stars = "⭐" * sweep['strength']
+                        sweeps_display.append(f"{sweep_type} @ {sweep['swept_level']:.2f} {strength_stars}")
+        except Exception as e:
+            print(f"Go API unavailable for sweeps: {e}")
+        
         result_data = {
             "price": last_row['Close'],
             "trend": trend,
@@ -420,7 +386,8 @@ def get_signal(
             "chart_patterns": chart_text,
             "sr_zones": sr_display,
             "fvg_zones": " | ".join(fvg_zones_display) if fvg_zones_display else "None",
-            "ob_zones": " | ".join(ob_zones_display) if ob_zones_display else "None"
+            "ob_zones": " | ".join(ob_zones_display) if ob_zones_display else "None",
+            "liquidity_sweeps": " | ".join(sweeps_display) if sweeps_display else "None"
         }
         
         return tf, result_data, df
@@ -680,6 +647,20 @@ def get_signal_single_timeframe(
             zone_type = "🟢" if zone['zone_type'] == 'bullish' else "🔴"
             ob_zones_display.append(f"{zone_type} {zone['bottom']:.2f}-{zone['top']:.2f}")
     
+    # Extract Liquidity Sweeps from Go API
+    sweeps_display = []
+    try:
+        from go_client import go_client
+        if go_client.health_check():
+            go_result = go_client.analyze_smc(df)
+            if go_result and 'liquidity_sweeps' in go_result:
+                for sweep in go_result['liquidity_sweeps'][-3:]:
+                    sweep_type = "🟢" if sweep['type'] == 'bullish' else "🔴"
+                    strength_stars = "⭐" * sweep['strength']
+                    sweeps_display.append(f"{sweep_type} @ {sweep['swept_level']:.2f} {strength_stars}")
+    except Exception as e:
+        print(f"Go API unavailable for sweeps: {e}")
+    
     result_data = {
         "price": last_row['Close'],
         "trend": trend,
@@ -690,7 +671,8 @@ def get_signal_single_timeframe(
         "chart_patterns": "Disabled",
         "sr_zones": sr_display,
         "fvg_zones": " | ".join(fvg_zones_display) if fvg_zones_display else "None",
-        "ob_zones": " | ".join(ob_zones_display) if ob_zones_display else "None"
+        "ob_zones": " | ".join(ob_zones_display) if ob_zones_display else "None",
+        "liquidity_sweeps": " | ".join(sweeps_display) if sweeps_display else "None"
     }
     
     return {
