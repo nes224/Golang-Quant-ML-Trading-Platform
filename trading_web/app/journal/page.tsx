@@ -40,10 +40,17 @@ export default function JournalPage() {
         try {
             const response = await fetch('http://localhost:8000/journal');
             const data = await response.json();
-            setEntries(data);
+            // Ensure data is an array
+            if (Array.isArray(data)) {
+                setEntries(data);
+            } else {
+                console.error('Expected array but got:', data);
+                setEntries([]);
+            }
             setLoading(false);
         } catch (error) {
             console.error('Error fetching journal:', error);
+            setEntries([]);
             setLoading(false);
         }
     };

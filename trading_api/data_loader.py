@@ -175,8 +175,7 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
     # 1. Try to get from cache
     if use_cache:
         try:
-            from db_manager import get_db_manager
-            db = get_db_manager()
+            from db_manager import db
             cached_df = db.get_cached_market_data(symbol, interval, limit=5000) # Get more history
             
             if cached_df is not None and not cached_df.empty:
@@ -237,8 +236,7 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
         # Cache the NEW data
         if use_cache:
             try:
-                from db_manager import get_db_manager
-                db = get_db_manager()
+                from db_manager import db
                 
                 # Prepare for caching
                 df_to_cache = new_df.copy()

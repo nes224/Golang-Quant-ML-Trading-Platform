@@ -273,11 +273,13 @@ def get_candlestick_data(
         df = calculate_indicators(df)
         
         # Adjust pivot detection based on timeframe
-        # H1 and higher: use smaller window to find more pivots
-        if timeframe in ['1h', '4h', '1d']:
-            left_bars, right_bars = 3, 3
-        else:
-            left_bars, right_bars = 5, 5
+        # Use consistent pivot detection across all timeframes for better quality
+        if timeframe in ['1m', '5m']:
+            left_bars, right_bars = 3, 3  # Shorter for very short timeframes
+        elif timeframe in ['15m', '30m']:
+            left_bars, right_bars = 5, 5  # Standard
+        else:  # 1h, 4h, 1d
+            left_bars, right_bars = 7, 7  # Longer for higher timeframes to reduce noise
         
         # Identify Pivot Points (on full dataset)
         df = identify_pivot_points(df, left_bars=left_bars, right_bars=right_bars)
@@ -294,12 +296,29 @@ def get_candlestick_data(
         fvg_zones = []
         break_signals = []
         
+        # Adjust FVG parameters based on timeframe
+        if timeframe in ['1m', '5m']:
+            lookback = 5
+            body_mult = 1.2
+        elif timeframe in ['15m', '30m']:
+            lookback = 10
+            body_mult = 1.3
+        elif timeframe == '1h':
+            lookback = 15
+            body_mult = 1.2  # Lower multiplier for 1H to find more FVGs
+        else:  # 4h, 1d
+            lookback = 20
+            body_mult = 1.5
+        
         start_time = time.time()
-        df = detect_fvg(df, lookback_period=10, body_multiplier=1.5)
+        df = detect_fvg(df, lookback_period=lookback, body_multiplier=body_mult)
         print(f"[FVG Detection] Completed in {time.time() - start_time:.2f}s")
         
         # Adjust FVG strategy parameters based on timeframe
-        backcandles, test_candles = 50, 10
+        if timeframe in ['1h', '4h', '1d']:
+            backcandles, test_candles = 100, 20  # More data for higher timeframes
+        else:
+            backcandles, test_candles = 50, 10
         
         # Fill key levels for FVG strategy (only last 200 candles)
         start_time = time.time()
