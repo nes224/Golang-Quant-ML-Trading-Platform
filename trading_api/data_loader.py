@@ -98,7 +98,7 @@ def fetch_data_mt5(symbol="XAUUSD", period="2mo", interval="1d"):
         "5m": 144,
         "15m": 56,
         "30m": 28,
-        "1h": 14,
+        "1h": 24,  # 24 hours per day
         "4h": 10,
         "1d": 10,
     }

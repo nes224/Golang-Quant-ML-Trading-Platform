@@ -4,29 +4,11 @@ import numpy as np
 def calculate_indicators(df):
     """
     Adds technical indicators to the DataFrame.
-    Uses Go API for performance, falls back to Python if unavailable.
     """
     if df is None or df.empty:
         return df
     
-    # Try Go API first
-    try:
-        from go_client import go_client
-        
-        if go_client.health_check():
-            result = go_client.calculate_indicators(df)
-            
-            if result:
-                # Apply Rust results to DataFrame
-                df['EMA_50'] = result['ema_50']
-                df['EMA_200'] = result['ema_200']
-                df['RSI'] = result['rsi']
-                df['ATR'] = result['atr']
-                return df
-    except Exception as e:
-        print(f"Go API unavailable, using Python fallback: {e}")
-    
-    # Python fallback
+    # Python implementation
     # Trend: EMA
     df['EMA_50'] = df['Close'].ewm(span=50, adjust=False).mean()
     df['EMA_200'] = df['Close'].ewm(span=200, adjust=False).mean()

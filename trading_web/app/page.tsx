@@ -1,26 +1,52 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './dashboard.css';
-import './dxy.css';
-import './timeframe-cards.css';
-import './market-hours.css';
-import { MarketHours } from './components/MarketHours';
+
+// Declare Plotly type
+declare const Plotly: any;
 
 export default function Dashboard() {
-  const [signalData, setSignalData] = useState<any>(null);
-  const [dxyData, setDxyData] = useState<any>(null);
+  const [candleData, setCandleData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
-  const [refreshingTF, setRefreshingTF] = useState<string | null>(null);
-  const [selectedSymbol, setSelectedSymbol] = useState('XAUUSD=X'); // Default to Spot Gold
+  const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
+  const [selectedSymbol, setSelectedSymbol] = useState('GC=F');
+  const chartRef = useRef<HTMLDivElement>(null);
 
-  // Fetch signal data and connect to WebSocket
+  // Load Plotly from CDN
   useEffect(() => {
-    fetchSignal();
-    fetchDXY(); // Fetch DXY on mount
+    const script = document.createElement('script');
+    script.src = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
+    script.async = true;
+    document.body.appendChild(script);
 
-    // WebSocket Connection
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, []);
+
+  // Fetch candlestick data
+  const fetchCandleData = async (timeframe: string = selectedTimeframe) => {
+    try {
+      setLoading(true);
+      const response = await fetch(
+        `http://localhost:8000/candlestick/${timeframe}?symbol=${selectedSymbol}&limit=200`
+      );
+      const data = await response.json();
+      setCandleData(data);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching candle data:', error);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCandleData();
+
+    // WebSocket Connection for real-time updates
     const ws = new WebSocket('ws://localhost:8000/ws');
 
     ws.onopen = () => {
@@ -31,105 +57,209 @@ export default function Dashboard() {
       try {
         const data = JSON.parse(event.data);
 
-        if (data.type === 'tick_update') {
-          // Real-time tick from MT5 - update price display immediately
-          console.log('Real-time tick:', data);
-          setLastUpdate(new Date());
-
-          // Update the price in signalData if it exists
-          setSignalData((prev: any) => {
-            if (!prev || !prev.timeframes) return prev;
-
-            // Update all timeframes with the new live price
-            const updatedTimeframes = { ...prev.timeframes };
-            Object.keys(updatedTimeframes).forEach(tf => {
-              if (updatedTimeframes[tf]) {
-                updatedTimeframes[tf] = {
-                  ...updatedTimeframes[tf],
-                  price: data.bid // Use bid price for display
-                };
-              }
-            });
-
-            return {
-              ...prev,
-              timeframes: updatedTimeframes
-            };
-          });
-        } else if (data.type === 'market_update') {
-          // Periodic update from Yahoo or full analysis update
-          console.log('Market update:', data);
-          setLastUpdate(new Date());
-          fetchSignal();
+        if (data.type === 'candle_update' && data.timeframe === selectedTimeframe) {
+          console.log('Candle update:', data);
+          setCandleData(data);
         }
-      } catch (e) {
-        console.error('Error parsing WS message:', e);
+      } catch (error) {
+        console.error('WebSocket error:', error);
       }
     };
 
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
     ws.onclose = () => {
-      console.log('Disconnected from WebSocket');
+      console.log('WebSocket disconnected');
     };
 
     return () => {
       ws.close();
     };
-  }, [selectedSymbol]); // Re-fetch when symbol changes
+  }, [selectedTimeframe, selectedSymbol]);
 
-  const fetchSignal = async () => {
-    try {
-      const res = await fetch(`http://localhost:8000/signal?symbol=${selectedSymbol}`);
-      const data = await res.json();
-      setSignalData(data);
-      setLastUpdate(new Date());
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching signal:', error);
-      setLoading(false);
+  // Render chart when data changes
+  useEffect(() => {
+    if (candleData && candleData.candles && chartRef.current && typeof Plotly !== 'undefined') {
+      renderChart();
     }
-  };
+  }, [candleData]);
 
-  const refreshSingleTF = async (tf: string) => {
-    setRefreshingTF(tf);
-    try {
-      const res = await fetch(`http://localhost:8000/signal/${tf}?symbol=${selectedSymbol}`);
-      const data = await res.json();
+  const renderChart = () => {
+    if (!chartRef.current || !candleData) return;
 
-      setSignalData((prev: any) => {
-        if (!prev || !prev.timeframes) return prev;
+    const candles = candleData.candles;
+    const keyLevels = candleData.key_levels || [];
+    const pivotPoints = candleData.pivot_points || [];
+    const fvgZones = candleData.fvg_zones || [];
+    const breakSignals = candleData.break_signals || [];
 
-        return {
-          ...prev,
-          timeframes: {
-            ...prev.timeframes,
-            [data.timeframe]: data.data
-          }
-        };
+    console.log('Rendering chart with:', {
+      candles: candles.length,
+      keyLevels: keyLevels.length,
+      pivotPoints: pivotPoints.length,
+      fvgZones: fvgZones.length,
+      breakSignals: breakSignals.length
+    });
+
+    // Prepare data for Plotly
+    const x = candles.map((c: any) => c.time);
+    const open = candles.map((c: any) => c.open);
+    const high = candles.map((c: any) => c.high);
+    const low = candles.map((c: any) => c.low);
+    const close = candles.map((c: any) => c.close);
+
+    // Candlestick trace
+    const trace1 = {
+      x: x,
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      type: 'candlestick',
+      name: 'OHLC',
+      increasing: { line: { color: '#26a69a' } },
+      decreasing: { line: { color: '#ef5350' } },
+      xaxis: 'x',
+      yaxis: 'y'
+    };
+
+    // Pivot Points
+    const pivotX = pivotPoints.map((p: any) => p.time);
+    const pivotY = pivotPoints.map((p: any) => p.price);
+    const trace2 = {
+      x: pivotX,
+      y: pivotY,
+      type: 'scatter',
+      mode: 'markers',
+      name: 'Pivot Points',
+      marker: { size: 6, color: '#9c27b0', symbol: 'circle' },
+      xaxis: 'x',
+      yaxis: 'y'
+    };
+
+    // Break Signals (BUY/SELL)
+    const buySignals = breakSignals.filter((s: any) => s.type === 'buy');
+    const sellSignals = breakSignals.filter((s: any) => s.type === 'sell');
+
+    const trace3 = {
+      x: buySignals.map((s: any) => s.time),
+      y: buySignals.map((s: any) => s.price),
+      type: 'scatter',
+      mode: 'markers',
+      name: 'BUY Signal',
+      marker: { size: 12, color: '#00ff00', symbol: 'triangle-up' },
+      xaxis: 'x',
+      yaxis: 'y'
+    };
+
+    const trace4 = {
+      x: sellSignals.map((s: any) => s.time),
+      y: sellSignals.map((s: any) => s.price),
+      type: 'scatter',
+      mode: 'markers',
+      name: 'SELL Signal',
+      marker: { size: 12, color: '#ff0000', symbol: 'triangle-down' },
+      xaxis: 'x',
+      yaxis: 'y'
+    };
+
+    const traces: any[] = [trace1, trace2, trace3, trace4];
+
+    // Add shapes (Key Levels + FVG Zones)
+    const shapes: any[] = [];
+
+    // Key Levels as horizontal lines
+    keyLevels.forEach((level: any) => {
+      const color = level.type === 'support' ? '#26a69a' : '#ef5350';
+      shapes.push({
+        type: 'line',
+        xref: 'paper',
+        x0: 0,
+        x1: 1,
+        yref: 'y',
+        y0: level.level,
+        y1: level.level,
+        line: {
+          color: color,
+          width: 2,
+          dash: 'dash'
+        }
       });
+    });
 
-      setLastUpdate(new Date());
-    } catch (error) {
-      console.error(`Error refreshing ${tf}:`, error);
-    } finally {
-      setRefreshingTF(null);
-    }
+    // FVG Zones as rectangles
+    fvgZones.forEach((zone: any) => {
+      const color = zone.type === 'bullish' ? 'rgba(0, 255, 0, 0.15)' : 'rgba(255, 0, 0, 0.15)';
+      const timeIndex = x.indexOf(zone.time);
+      if (timeIndex >= 0) {
+        shapes.push({
+          type: 'rect',
+          xref: 'x',
+          yref: 'y',
+          x0: x[timeIndex],
+          x1: x[Math.min(timeIndex + 30, x.length - 1)],
+          y0: zone.start,
+          y1: zone.end,
+          fillcolor: color,
+          opacity: 0.6,
+          layer: 'below',
+          line: { width: 0 }
+        });
+      }
+    });
+
+    const layout = {
+      title: {
+        text: `${candleData.symbol} - ${candleData.timeframe} (FVG Strategy)`,
+        font: { color: '#ffffff', size: 20 }
+      },
+      dragmode: 'zoom',
+      showlegend: true,
+      legend: {
+        orientation: 'h',
+        y: 1.1,
+        font: { color: '#ffffff' }
+      },
+      xaxis: {
+        rangeslider: { visible: false },
+        gridcolor: 'rgba(255, 255, 255, 0.1)',
+        color: '#ffffff'
+      },
+      yaxis: {
+        gridcolor: 'rgba(255, 255, 255, 0.1)',
+        color: '#ffffff'
+      },
+      shapes: shapes,
+      plot_bgcolor: 'rgba(0, 0, 0, 0.8)',
+      paper_bgcolor: 'rgba(0, 0, 0, 0)',
+      font: { color: '#ffffff' },
+      margin: { t: 80, b: 50, l: 60, r: 40 }
+    };
+
+    const config = {
+      responsive: true,
+      displayModeBar: true,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+      displaylogo: false
+    };
+
+    Plotly.newPlot(chartRef.current, traces, layout, config);
   };
 
-  const fetchDXY = async () => {
-    try {
-      const res = await fetch('http://localhost:8000/api/dxy?timeframe=1d');
-      const data = await res.json();
-      setDxyData(data);
-    } catch (error) {
-      console.error('Error fetching DXY:', error);
-    }
+  const handleTimeframeChange = (tf: string) => {
+    setSelectedTimeframe(tf);
+    fetchCandleData(tf);
   };
 
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <p>Loading market data...</p>
+      <div className="dashboard">
+        <div className="loading">
+          <div className="spinner"></div>
+          <p>Loading chart data...</p>
+        </div>
       </div>
     );
   }
@@ -137,216 +267,78 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
       <header className="dashboard-header">
-        <div className="header-top">
-          <h1>🏆 Trading Dashboard</h1>
-          <div className="symbol-selector">
-            <button
-              className={`symbol-btn ${selectedSymbol === 'GC=F' ? 'active' : ''}`}
-              onClick={() => setSelectedSymbol('GC=F')}
-            >
-              🥇 XAU/USD
-            </button>
-            <button
-              className={`symbol-btn ${selectedSymbol === 'BTC-USD' ? 'active' : ''}`}
-              onClick={() => setSelectedSymbol('BTC-USD')}
-            >
-              ₿ BTC/USD
-            </button>
-          </div>
-        </div>
-        <div className="header-info">
-          <span className="live-indicator">🟢 LIVE</span>
-          <span className="data-source-badge">📡 {signalData?.data_source || 'YAHOO'}</span>
-          <span className="last-update">Updated: {lastUpdate.toLocaleTimeString()}</span>
+        <h1>📊 XAU/USD Candlestick Chart</h1>
+        <div className="symbol-selector">
+          <select
+            value={selectedSymbol}
+            onChange={(e) => {
+              setSelectedSymbol(e.target.value);
+              fetchCandleData();
+            }}
+            className="symbol-select"
+          >
+            <option value="GC=F">Gold Futures (GC=F)</option>
+            <option value="XAUUSD=X">Spot Gold (XAUUSD=X)</option>
+          </select>
         </div>
       </header>
 
-      <div className="dashboard-grid">
-        {/* DXY Reference Indicator */}
-        {dxyData && !dxyData.error && (
-          <section className="card dxy-card">
-            <h2>💵 DXY (US Dollar Index)</h2>
-            <div className="dxy-summary">
-              <div className="dxy-price">
-                <span className="label">Price</span>
-                <span className="value">{dxyData.price}</span>
-              </div>
-              <div className={`dxy-trend trend-${dxyData.trend?.toLowerCase()}`}>
-                <span className="label">Trend</span>
-                <span className="value">
-                  {dxyData.trend === 'UP' && '↗ UP'}
-                  {dxyData.trend === 'DOWN' && '↘ DOWN'}
-                  {dxyData.trend === 'SIDEWAY' && '↔ SIDEWAY'}
-                </span>
-              </div>
-              <div className="dxy-rsi">
-                <span className="label">RSI</span>
-                <span className="value">{dxyData.rsi}</span>
-              </div>
-            </div>
-            <p className="dxy-interpretation">{dxyData.interpretation}</p>
-          </section>
-        )}
+      <div className="timeframe-selector">
+        {['5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
+          <button
+            key={tf}
+            className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}
+            onClick={() => handleTimeframeChange(tf)}
+          >
+            {tf.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
-        {/* Header with Symbol Selector */}
-        <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h1>Trading Dashboard</h1>
-          <div className="symbol-selector">
-            <select
-              value={selectedSymbol}
-              onChange={(e) => {
-                setSelectedSymbol(e.target.value);
-                setLoading(true);
-              }}
-              style={{
-                padding: '0.5rem 1rem',
-                borderRadius: '8px',
-                background: '#1e2139',
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.1)',
-                fontSize: '1rem',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="XAUUSD=X">Gold (XAUUSD)</option>
-              <option value="GC=F">Gold Futures (GC=F)</option>
-              <option value="BTC-USD">Bitcoin (BTC)</option>
-              <option value="ETH-USD">Ethereum (ETH)</option>
-              <option value="EURUSD=X">EUR/USD</option>
-              <option value="GBPUSD=X">GBP/USD</option>
-            </select>
+      <div className="chart-container">
+        <div ref={chartRef} className="plotly-chart"></div>
+
+        <div className="key-levels-section">
+          <h3>🎯 Key Support/Resistance Levels</h3>
+          <div className="key-levels-grid">
+            {candleData?.key_levels?.slice(0, 5).map((level: any, idx: number) => (
+              <div key={idx} className={`level-card ${level.type}`}>
+                <div className="level-header">
+                  <span className="level-type">{level.type ? level.type.toUpperCase() : 'N/A'}</span>
+                  <span className="level-strength">Strength: {level.strength || 0}</span>
+                </div>
+                <div className="level-price">{level.level || 'N/A'}</div>
+                <div className="level-details">
+                  <span>High Touches: {level.high_touches || 0}</span>
+                  <span>Low Touches: {level.low_touches || 0}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Market Hours Section */}
-        <MarketHours />
-
-        {/* Signal Section */}
-        <section className="card signal-card">
-          <h2>📊 Trading Signals</h2>
-
-          {signalData && (
-            <>
-              <div className="signal-summary">
-                <div className={`signal-badge ${signalData.final_signal.toLowerCase()}`}>
-                  {signalData.final_signal}
-                </div>
-                <div className="confluence-score">
-                  <span className="score-label">Confluence Score</span>
-                  <span className={`score-value grade-${signalData.confluence.grade.toLowerCase()}`}>
-                    {signalData.confluence.score}/100
-                  </span>
-                  <span className="grade-badge">{signalData.confluence.grade}</span>
-                </div>
-              </div>
-
-              <p className="recommendation">{signalData.recommendation}</p>
-
-              <div className="confluence-factors">
-                <h4>Factors:</h4>
-                <ul>
-                  {signalData.confluence.factors.map((factor: string, idx: number) => (
-                    <li key={idx}>✓ {factor}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="timeframes-section">
-                <h3>Multi-Timeframe Analysis</h3>
-
-                <div className="timeframe-grid">
-                  {['1d', '4h', '1h', '30m', '15m', '5m'].map((tf) => {
-                    let data = signalData.timeframes[tf];
-
-                    // Fallback if data is missing to prevent card from disappearing
-                    if (!data) {
-                      data = {
-                        price: 0,
-                        trend: 'N/A',
-                        signal: 'WAIT',
-                        rsi: 0,
-                        price_action: 'Data Unavailable',
-                        sr_zones: 'None',
-                        fvg_zones: 'None',
-                        ob_zones: 'None',
-                        liquidity_sweeps: 'None'
-                      };
-                    }
-                    const isRefreshing = refreshingTF === tf;
-
-                    return (
-                      <div key={tf} className="tf-card">
-                        {/* Card Header */}
-                        <div className="tf-card-header">
-                          <span className="tf-badge">{tf}</span>
-                          <span className="tf-price">${data.price?.toFixed(2)}</span>
-                        </div>
-
-                        {/* Card Body */}
-                        <div className="tf-card-body">
-                          {/* Core Metrics */}
-                          <div className="metric-row">
-                            <span className={`trend-${data.trend?.toLowerCase()}`}>
-                              {data.trend === 'UP' ? '↑' : '↓'} {data.trend}
-                            </span>
-                            <span>RSI: {data.rsi}</span>
-                          </div>
-
-                          {/* Signal Badge */}
-                          <div className={`signal-badge signal-${data.signal?.toLowerCase()}`}>
-                            {data.signal === 'BUY' ? '🟢' : data.signal === 'SELL' ? '🔴' : '🟡'} {data.signal}
-                          </div>
-
-                          {/* Analysis Details */}
-                          <div className="analysis-section">
-                            <div className="analysis-item">
-                              <span className="label">📍 PA:</span>
-                              <span className="value">{data.price_action || 'None'}</span>
-                            </div>
-                            <div className="analysis-item">
-                              <span className="label">🎯 S/R:</span>
-                              <span className="value" title={data.sr_zones || 'None'}>
-                                {data.sr_zones || 'None'}
-                              </span>
-                            </div>
-                            <div className="analysis-item">
-                              <span className="label">💎 FVG:</span>
-                              <span className="value" title={data.fvg_zones || 'None'}>
-                                {data.fvg_zones || 'None'}
-                              </span>
-                            </div>
-                            <div className="analysis-item">
-                              <span className="label">📦 OB:</span>
-                              <span className="value" title={data.ob_zones || 'None'}>
-                                {data.ob_zones || 'None'}
-                              </span>
-                            </div>
-                            <div className="analysis-item">
-                              <span className="label">⚡ Sweep:</span>
-                              <span className="value">{data.liquidity_sweeps || 'None'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Card Footer */}
-                        <div className="tf-card-footer">
-                          <button
-                            className={`refresh-btn ${isRefreshing ? 'refreshing' : ''}`}
-                            onClick={() => refreshSingleTF(tf)}
-                            disabled={isRefreshing}
-                            title={`Refresh ${tf} analysis`}
-                          >
-                            {isRefreshing ? '⏳ Refreshing...' : '🔄 Refresh'}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </section>
+        <div className="chart-info">
+          <div className="info-card">
+            <span className="info-label">Total Candles:</span>
+            <span className="info-value">{candleData?.total || 0}</span>
+          </div>
+          <div className="info-card">
+            <span className="info-label">Latest Close:</span>
+            <span className="info-value">
+              {candleData?.candles?.[candleData.candles.length - 1]?.close.toFixed(2) || 'N/A'}
+            </span>
+          </div>
+          <div className="info-card">
+            <span className="info-label">RSI:</span>
+            <span className="info-value">
+              {candleData?.candles?.[candleData.candles.length - 1]?.rsi?.toFixed(2) || 'N/A'}
+            </span>
+          </div>
+          <div className="info-card">
+            <span className="info-label">Pivot Points:</span>
+            <span className="info-value">{candleData?.pivot_points?.length || 0}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
