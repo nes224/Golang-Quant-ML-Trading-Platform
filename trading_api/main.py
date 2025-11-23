@@ -243,10 +243,24 @@ def read_root():
         "version": "2.0.0",
         "endpoints": {
             "candlestick_data": "/candlestick/{timeframe}",
+            "multi_tf_trend": "/multi-tf-trend",
             "websocket": "/ws",
             "reference_indicators": "/api/dxy, /api/reference"
         }
     }
+
+@app.get("/multi-tf-trend")
+def get_multi_tf_trend(symbol: str = Query(default="GC=F", description="Trading symbol")):
+    """
+    Get trend analysis for multiple timeframes.
+    """
+    try:
+        from trend_detection import calculate_multi_tf_trend
+        trends = calculate_multi_tf_trend(symbol)
+        return trends
+    except Exception as e:
+        print(f"Error in multi-TF trend: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/candlestick/{timeframe}")
 def get_candlestick_data(

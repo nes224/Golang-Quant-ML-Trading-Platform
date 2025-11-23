@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar';
+import MultiTFIndicator from './components/MultiTFIndicator';
 import './dashboard.css';
 
 // Declare Plotly type
@@ -404,19 +405,22 @@ export default function Dashboard() {
 
         <MarketSessions />
 
-        <div className="timeframe-selector">
-          {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
-            <button
-              key={tf}
-              className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}
-              onClick={() => handleTimeframeChange(tf)}
-            >
-              {tf.toUpperCase()}
-            </button>
-          ))}
+        <div className="timeframe-selector" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
+              <button
+                key={tf}
+                className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}
+                onClick={() => handleTimeframeChange(tf)}
+              >
+                {tf.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <MultiTFIndicator symbol={selectedSymbol} />
         </div>
 
-        <div className="chart-container">
+        <div className="chart-container" style={{ position: 'relative' }}>
           <div ref={chartRef} className="plotly-chart"></div>
 
           <div className="key-levels-section">

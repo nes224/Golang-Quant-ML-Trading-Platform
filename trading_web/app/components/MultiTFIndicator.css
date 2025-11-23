@@ -1,0 +1,57 @@
+.multi-tf-indicator-inline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(21, 26, 33, 0.6);
+    border: 1px solid #2a2e39;
+    border-radius: 6px;
+}
+
+.mtf-label {
+    font-size: 0.75rem;
+    color: #848e9c;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mtf-trends {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.mtf-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(42, 46, 57, 0.5);
+    border-radius: 4px;
+    cursor: help;
+    transition: background 0.2s;
+}
+
+.mtf-item:hover {
+    background: rgba(42, 46, 57, 0.8);
+}
+
+.mtf-tf {
+    font-size: 0.7rem;
+    color: #848e9c;
+    font-weight: 600;
+    min-width: 24px;
+}
+
+.mtf-arrow {
+    font-size: 1rem;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.mtf-loading {
+    font-size: 0.75rem;
+    color: #848e9c;
+    font-style: italic;
+}
