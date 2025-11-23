@@ -158,3 +158,61 @@ def get_risk_parameters(symbol, timeframe, account_balance, risk_percent, direct
         "account_balance": account_balance,
         "risk_percent": risk_percent
     }
+
+
+def calculate_trade_setup(entry_price, high, low, signal_type, account_balance, risk_percent=1.0, reward_ratio=2.0, contract_size=100):
+    """
+    Calculate trade setup based on Candle High/Low (User's Strategy).
+    
+    Args:
+        entry_price: Current Close/Entry Price
+        high: Candle High (for Sell SL)
+        low: Candle Low (for Buy SL)
+        signal_type: 'BUY' (2) or 'SELL' (1)
+        account_balance: Account Balance
+        risk_percent: Risk % per trade
+        reward_ratio: Risk:Reward Ratio
+        contract_size: Contract size (default 100 for Gold)
+        
+    Returns:
+        dict with setup details
+    """
+    signal_type = str(signal_type).upper()
+    
+    if signal_type in ['BUY', '2']:
+        sl = low
+        # TP = Entry + Ratio * (Entry - SL)
+        tp = entry_price + reward_ratio * (entry_price - sl)
+        direction = 'BUY'
+    elif signal_type in ['SELL', '1']:
+        sl = high
+        # TP = Entry - Ratio * (SL - Entry)
+        tp = entry_price - reward_ratio * (sl - entry_price)
+        direction = 'SELL'
+    else:
+        return None
+        
+    # Calculate Position Size
+    risk_amount = account_balance * (risk_percent / 100)
+    sl_distance = abs(entry_price - sl)
+    
+    if sl_distance == 0:
+        return None
+        
+    # Position Size (Lots) = Risk / (Distance * ContractSize)
+    # For Gold: Distance=1 ($1), Contract=100 -> Value=$100
+    position_size = risk_amount / (sl_distance * contract_size)
+    
+    # Normalize position size (min 0.01, max 100, step 0.01)
+    position_size = max(0.01, round(position_size, 2))
+    
+    return {
+        "direction": direction,
+        "entry_price": entry_price,
+        "stop_loss": sl,
+        "take_profit": tp,
+        "sl_distance": sl_distance,
+        "risk_amount": risk_amount,
+        "position_size": position_size,
+        "potential_profit": risk_amount * reward_ratio
+    }

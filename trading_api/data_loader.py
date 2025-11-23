@@ -269,6 +269,19 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
         else:
             final_df = new_df
 
+    # Normalize column names to ensure consistency
+    if final_df is not None and not final_df.empty:
+        # Standardize to uppercase
+        column_mapping = {
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume',
+            'date': 'Date'
+        }
+        final_df.rename(columns=column_mapping, inplace=True)
+
     return final_df
 
 def fetch_news(symbol="GC=F"):

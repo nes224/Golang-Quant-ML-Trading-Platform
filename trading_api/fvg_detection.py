@@ -1,9 +1,22 @@
 import pandas as pd
 import numpy as np
+from functools import lru_cache
+import hashlib
+
+# Simple cache for FVG results
+_fvg_cache = {}
+
+def _get_df_hash(df):
+    """Generate hash for DataFrame to use as cache key"""
+    try:
+        return hashlib.md5(pd.util.hash_pandas_object(df[['Open', 'High', 'Low', 'Close']]).values).hexdigest()
+    except:
+        return None
 
 def detect_fvg(df, lookback_period=10, body_multiplier=1.5):
     """
     Detects Fair Value Gaps (FVGs) in historical price data.
+    Uses caching to avoid recalculation.
     
     Parameters:
         df (DataFrame): DataFrame with columns ['Open', 'High', 'Low', 'Close'].
@@ -15,6 +28,12 @@ def detect_fvg(df, lookback_period=10, body_multiplier=1.5):
     """
     if df is None or df.empty or len(df) < 3:
         df['FVG'] = None
+        return df
+    
+    # Check cache
+    cache_key = _get_df_hash(df)
+    if cache_key and cache_key in _fvg_cache:
+        df['FVG'] = _fvg_cache[cache_key]
         return df
     
     fvg_list = [None, None]  # First two candles can't have FVG
@@ -47,6 +66,14 @@ def detect_fvg(df, lookback_period=10, body_multiplier=1.5):
             fvg_list.append(None)
     
     df['FVG'] = fvg_list
+    
+    # Cache result
+    if cache_key:
+        _fvg_cache[cache_key] = fvg_list
+        # Limit cache size
+        if len(_fvg_cache) > 10:
+            _fvg_cache.pop(next(iter(_fvg_cache)))
+    
     return df
 
 def detect_key_levels_simple(df, current_candle, backcandles=50, test_candles=10):
@@ -87,14 +114,24 @@ def detect_key_levels_simple(df, current_candle, backcandles=50, test_candles=10
     
     return key_levels
 
-def fill_key_levels(df, backcandles=50, test_candles=10):
+def fill_key_levels(df, backcandles=50, test_candles=10, max_candles=200):
     """
     Adds 'key_levels' column to DataFrame.
+    Only calculates for the last max_candles to improve performance.
+    
+    Parameters:
+        df: DataFrame
+        backcandles: Lookback window
+        test_candles: Validation window
+        max_candles: Maximum number of recent candles to process (default 200)
     """
     df["key_levels"] = None
     key_levels_col_idx = df.columns.get_loc("key_levels")
     
-    for current_candle in range(backcandles + test_candles, len(df)):
+    # Only process the last max_candles
+    start_idx = max(backcandles + test_candles, len(df) - max_candles)
+    
+    for current_candle in range(start_idx, len(df)):
         key_levels = detect_key_levels_simple(df, current_candle, backcandles, test_candles)
         
         support_levels = [(idx, level) for (idx, level) in key_levels["support"] 

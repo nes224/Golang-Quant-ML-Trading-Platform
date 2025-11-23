@@ -6,6 +6,105 @@ import './dashboard.css';
 // Declare Plotly type
 declare const Plotly: any;
 
+// Market Sessions Component
+const MarketSessions = () => {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const sessions = [
+    { name: 'Sydney (AUD)', start: 5, end: 14, color: '#4caf50' }, // 05:00 - 14:00
+    { name: 'Tokyo (JPY)', start: 6, end: 15, color: '#2196f3' },   // 06:00 - 15:00
+    { name: 'China (CNY)', start: 8, end: 16, color: '#f44336' },   // 08:00 - 16:00
+    { name: 'Swiss (CHF)', start: 13, end: 21, color: '#e91e63' },  // 13:00 - 21:00
+    { name: 'Europe (EUR)', start: 14, end: 23, color: '#9c27b0' }, // 14:00 - 23:00
+    { name: 'London (GBP)', start: 15, end: 24, color: '#ff9800' }, // 15:00 - 00:00 (24)
+    { name: 'New York (USD)', start: 19, end: 28, color: '#ff5722' }, // 19:00 - 04:00 (+1 day)
+    { name: 'Canada (CAD)', start: 19, end: 28, color: '#795548' },   // 19:00 - 04:00 (+1 day)
+  ];
+
+  const currentHour = currentTime.getHours() + currentTime.getMinutes() / 60;
+
+  return (
+    <div className="market-sessions">
+      <h3>🕒 Market Sessions (UTC+7)</h3>
+      <div className="sessions-grid">
+        {/* Time Header */}
+        <div className="session-row header">
+          <div className="session-label">Time</div>
+          <div className="session-timeline">
+            {Array.from({ length: 24 }).map((_, i) => (
+              <div key={i} className="time-marker">{i}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* Sessions */}
+        {sessions.map((session) => {
+          const start = session.start;
+          const end = session.end;
+
+          // Calculate first segment (up to midnight)
+          // If end > 24, the first bar goes from start to 24.
+          // If end <= 24, the bar goes from start to end.
+          const firstSegmentDuration = end > 24 ? (24 - start) : (end - start);
+
+          // Calculate second segment (after midnight, if any)
+          const secondSegmentDuration = end > 24 ? (end - 24) : 0;
+
+          // Check if current time falls within the session
+          // Case 1: Standard session (e.g., 08:00 - 16:00) -> start <= now < end
+          // Case 2: Crossing midnight (e.g., 19:00 - 04:00) -> (start <= now < 24) OR (0 <= now < end-24)
+          const isActive = end > 24
+            ? (currentHour >= start || currentHour < (end - 24))
+            : (currentHour >= start && currentHour < end);
+
+          return (
+            <div key={session.name} className="session-row">
+              <div className="session-label">{session.name}</div>
+              <div className="session-timeline">
+                {/* First Segment */}
+                <div
+                  className="session-bar"
+                  style={{
+                    left: `${(start / 24) * 100}%`,
+                    width: `${(firstSegmentDuration / 24) * 100}%`,
+                    backgroundColor: session.color,
+                    opacity: isActive ? 1 : 0.3
+                  }}
+                />
+
+                {/* Second Segment (Wrap around) */}
+                {secondSegmentDuration > 0 && (
+                  <div
+                    className="session-bar wrap"
+                    style={{
+                      left: `0%`,
+                      width: `${(secondSegmentDuration / 24) * 100}%`,
+                      backgroundColor: session.color,
+                      opacity: isActive ? 1 : 0.3
+                    }}
+                  />
+                )}
+
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Current Time Indicator */}
+        <div
+          className="current-time-line"
+          style={{ left: `calc(120px + (100% - 120px) * ${currentHour / 24})` }}
+        ></div>
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const [candleData, setCandleData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +199,12 @@ export default function Dashboard() {
       keyLevels: keyLevels.length,
       pivotPoints: pivotPoints.length,
       fvgZones: fvgZones.length,
-      breakSignals: breakSignals.length
+      breakSignals: breakSignals.length,
+      pivotSample: pivotPoints.slice(0, 3),
+      candlePriceRange: candles.length > 0 ? {
+        min: Math.min(...candles.map((c: any) => c.low)),
+        max: Math.max(...candles.map((c: any) => c.high))
+      } : null
     });
 
     // Prepare data for Plotly
@@ -134,7 +238,12 @@ export default function Dashboard() {
       type: 'scatter',
       mode: 'markers',
       name: 'Pivot Points',
-      marker: { size: 6, color: '#9c27b0', symbol: 'circle' },
+      marker: {
+        size: 10,
+        color: '#ff00ff',  // Bright magenta
+        symbol: 'circle',
+        line: { color: '#ffffff', width: 1 }
+      },
       xaxis: 'x',
       yaxis: 'y'
     };
@@ -213,29 +322,36 @@ export default function Dashboard() {
     const layout = {
       title: {
         text: `${candleData.symbol} - ${candleData.timeframe} (FVG Strategy)`,
-        font: { color: '#ffffff', size: 20 }
+        font: { color: '#e0e3eb', size: 18, family: 'Inter, sans-serif' },
+        x: 0.05,
       },
       dragmode: 'zoom',
       showlegend: true,
       legend: {
         orientation: 'h',
-        y: 1.1,
-        font: { color: '#ffffff' }
+        y: 1.05,
+        x: 0.3,
+        font: { color: '#848e9c' }
       },
       xaxis: {
         rangeslider: { visible: false },
-        gridcolor: 'rgba(255, 255, 255, 0.1)',
-        color: '#ffffff'
+        gridcolor: '#2a2e39',
+        color: '#848e9c',
+        linecolor: '#2a2e39'
       },
       yaxis: {
-        gridcolor: 'rgba(255, 255, 255, 0.1)',
-        color: '#ffffff'
+        gridcolor: '#2a2e39',
+        color: '#848e9c',
+        linecolor: '#2a2e39',
+        zerolinecolor: '#2a2e39',
+        side: 'right'
       },
       shapes: shapes,
-      plot_bgcolor: 'rgba(0, 0, 0, 0.8)',
-      paper_bgcolor: 'rgba(0, 0, 0, 0)',
-      font: { color: '#ffffff' },
-      margin: { t: 80, b: 50, l: 60, r: 40 }
+      plot_bgcolor: '#151a21',
+      paper_bgcolor: '#151a21',
+      font: { family: 'Inter, sans-serif', color: '#e0e3eb' },
+      margin: { t: 60, b: 40, l: 60, r: 40 },
+      hovermode: 'x unified'
     };
 
     const config = {
@@ -283,8 +399,10 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <MarketSessions />
+
       <div className="timeframe-selector">
-        {['5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
+        {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
           <button
             key={tf}
             className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}

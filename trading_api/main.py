@@ -2,12 +2,15 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.responses import JSONResponse
 import uvicorn
 from typing import Optional, List
+from pydantic import BaseModel
 import pandas as pd
 import asyncio
 import json
 from data_loader import fetch_data
 from analysis import calculate_indicators
 from config import Config
+from key_levels import identify_pivot_points, identify_key_levels, get_pivot_positions
+from fvg_detection import detect_fvg, fill_key_levels, detect_break_signal, get_fvg_zones, get_break_signals
 
 from fastapi.middleware.cors import CORSMiddleware
 from reference_api import router as reference_router
@@ -106,16 +109,83 @@ async def broadcast_market_data():
             # Send Price Update
             if current_time - last_update_time >= update_interval:
                 try:
-                    # Fetch latest OHLC data
-                    df = fetch_data(symbol=symbol, period="1d", interval="1h")
+
+                    # Fetch latest OHLC data (use 1mo to ensure enough data for analysis)
+                    df = fetch_data(symbol=symbol, period="1mo", interval="1h")
                     
                     if df is not None and not df.empty:
                         # Calculate indicators
                         df = calculate_indicators(df)
                         
+                        # --- Perform Analysis (copied from get_candlestick_data) ---
+                        # Adjust pivot detection
+                        left_bars, right_bars = 3, 3 # H1 settings
+                        
+                        # Identify Pivot Points
+                        df = identify_pivot_points(df, left_bars=left_bars, right_bars=right_bars)
+                        
+                        # Identify Key Levels
+                        global_key_levels = identify_key_levels(df, bin_width=0.003, min_touches=3)
+                        
+                        # Detect FVG
+                        df = detect_fvg(df, lookback_period=10, body_multiplier=1.5)
+                        
+                        # Fill key levels for FVG strategy (only last 200 candles)
+                        df = fill_key_levels(df, backcandles=50, test_candles=10, max_candles=200)
+                        
+                        # Detect break signals
+                        df = detect_break_signal(df)
+                        
+                        # Filter for last 100 candles
+                        df_visible = df.tail(100)
+                        visible_times = set(str(idx) for idx in df_visible.index)
+                        
+                        # Extract analysis results
+                        fvg_zones = [z for z in get_fvg_zones(df) if z['time'] in visible_times]
+                        break_signals = [s for s in get_break_signals(df) if s['time'] in visible_times]
+                        pivot_points = [p for p in get_pivot_positions(df) if p['time'] in visible_times]
+                        key_levels = df.iloc[-1]['key_levels'] if 'key_levels' in df.columns and isinstance(df.iloc[-1]['key_levels'], dict) else []
+                        # Note: key_levels structure in get_candlestick_data is different (list of dicts vs dict of lists in df)
+                        # identify_key_levels returns a list of dicts, but fill_key_levels adds a column.
+                        # Actually identify_key_levels returns a list of levels.
+                        # Let's use the one from identify_key_levels which is global for the chart
+                        # Wait, identify_key_levels returns `key_levels` list.
+                        # But fill_key_levels adds a column 'key_levels' to the DF.
+                        # In get_candlestick_data, `key_levels` variable comes from `identify_key_levels(df...)`.
+                        # So we should use that.
+                        
+                        # Re-run identify_key_levels to get the list format expected by frontend
+                        # (It was already run above, capturing the return value)
+                        # Wait, I didn't capture the return value of identify_key_levels above.
+                        # Let's fix that.
+                        
+                        # Correct logic:
+                        # 1. Pivot Points
+                        df = identify_pivot_points(df, left_bars=left_bars, right_bars=right_bars)
+                        
+                        # 2. Key Levels (Global)
+                        global_key_levels = identify_key_levels(df, bin_width=0.003, min_touches=3)
+                        
+                        # 3. FVG
+                        df = detect_fvg(df, lookback_period=10, body_multiplier=1.5)
+                        
+                        # 4. FVG Strategy Key Levels (Column)
+                        df = fill_key_levels(df, backcandles=50, test_candles=10, max_candles=200)
+                        
+                        # 5. Break Signals
+                        df = detect_break_signal(df)
+                        
+                        # Prepare visible data
+                        df_visible = df.tail(100)
+                        visible_times = set(str(idx) for idx in df_visible.index)
+                        
+                        fvg_zones = [z for z in get_fvg_zones(df) if z['time'] in visible_times]
+                        break_signals = [s for s in get_break_signals(df) if s['time'] in visible_times]
+                        pivot_points = [p for p in get_pivot_positions(df) if p['time'] in visible_times]
+                        
                         # Prepare candlestick data
                         candles = []
-                        for idx, row in df.tail(100).iterrows():  # Last 100 candles
+                        for idx, row in df_visible.iterrows():  # Last 100 candles
                             candles.append({
                                 "time": str(idx),
                                 "open": float(row['Open']),
@@ -123,6 +193,7 @@ async def broadcast_market_data():
                                 "low": float(row['Low']),
                                 "close": float(row['Close']),
                                 "volume": float(row['Volume']) if 'Volume' in row else 0,
+                                "rsi": float(row['RSI']) if 'RSI' in row and pd.notna(row['RSI']) else None,
                             })
                         
                         update_data = {
@@ -130,6 +201,10 @@ async def broadcast_market_data():
                             "symbol": symbol,
                             "timeframe": "1h",
                             "candles": candles,
+                            "key_levels": global_key_levels,
+                            "pivot_points": pivot_points,
+                            "fvg_zones": fvg_zones,
+                            "break_signals": break_signals,
                             "current_price": float(current_price) if current_price else float(df['Close'].iloc[-1]),
                             "timestamp": str(pd.Timestamp.now())
                         }
@@ -187,8 +262,7 @@ def get_candlestick_data(
     Timeframes: 5m, 15m, 30m, 1h, 4h, 1d
     """
     try:
-        from key_levels import identify_pivot_points, identify_key_levels, get_pivot_positions
-        from fvg_detection import detect_fvg, fill_key_levels, detect_break_signal, get_fvg_zones, get_break_signals
+        # Imports are now at top level
         
         # Fetch data (use longer period for H1 to ensure enough candles)
         period = "6mo" if timeframe == "1h" else "2mo"
@@ -213,28 +287,31 @@ def get_candlestick_data(
         # Identify Key Levels (on full dataset)
         key_levels = identify_key_levels(df, bin_width=0.003, min_touches=3)
         
+        # Get visible range for candles (needed for filtering)
+        df_visible = df.tail(limit)
+        visible_times = set(str(idx) for idx in df_visible.index)
+        
         # Detect FVG (Fair Value Gaps)
+        import time
+        fvg_zones = []
+        break_signals = []
+        
+        start_time = time.time()
         df = detect_fvg(df, lookback_period=10, body_multiplier=1.5)
+        print(f"[FVG Detection] Completed in {time.time() - start_time:.2f}s")
         
         # Adjust FVG strategy parameters based on timeframe
-        if timeframe in ['1h', '4h', '1d']:
-            backcandles, test_candles = 30, 5  # Smaller window for higher TF
-        else:
-            backcandles, test_candles = 50, 10  # Larger window for lower TF
+        backcandles, test_candles = 50, 10
         
-        # Fill key levels for FVG strategy
-        df = fill_key_levels(df, backcandles=backcandles, test_candles=test_candles)
+        # Fill key levels for FVG strategy (only last 200 candles)
+        start_time = time.time()
+        df = fill_key_levels(df, backcandles=backcandles, test_candles=test_candles, max_candles=200)
+        print(f"[Key Levels] Completed in {time.time() - start_time:.2f}s")
         
         # Detect break signals
+        start_time = time.time()
         df = detect_break_signal(df)
-        
-        # Get visible range for candles
-        df_visible = df.tail(limit)
-        
-        # Get Pivot Positions (from full dataset, but only those in visible range)
-        all_pivot_points = get_pivot_positions(df)
-        visible_times = set(str(idx) for idx in df_visible.index)
-        pivot_points = [p for p in all_pivot_points if p['time'] in visible_times]
+        print(f"[Break Signals] Completed in {time.time() - start_time:.2f}s")
         
         # Get FVG zones
         all_fvg_zones = get_fvg_zones(df)
@@ -243,6 +320,10 @@ def get_candlestick_data(
         # Get break signals
         all_break_signals = get_break_signals(df)
         break_signals = [s for s in all_break_signals if s['time'] in visible_times]
+        
+        # Get Pivot Positions (from full dataset, but only those in visible range)
+        all_pivot_points = get_pivot_positions(df)
+        pivot_points = [p for p in all_pivot_points if p['time'] in visible_times]
         
         # Prepare candlestick data
         candles = []
@@ -271,6 +352,37 @@ def get_candlestick_data(
             "total": len(candles)
         }
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class RiskCalculationRequest(BaseModel):
+    entry_price: float
+    high: float
+    low: float
+    signal_type: str
+    account_balance: float
+    risk_percent: float = 1.0
+    reward_ratio: float = 2.0
+
+@app.post("/calculate-risk")
+def calculate_risk(request: RiskCalculationRequest):
+    """
+    Calculate position size and risk parameters based on user's strategy.
+    """
+    try:
+        from risk_management import calculate_trade_setup
+        result = calculate_trade_setup(
+            request.entry_price,
+            request.high,
+            request.low,
+            request.signal_type,
+            request.account_balance,
+            request.risk_percent,
+            request.reward_ratio
+        )
+        if not result:
+            raise HTTPException(status_code=400, detail="Invalid calculation parameters")
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
