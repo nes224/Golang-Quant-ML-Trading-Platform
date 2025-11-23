@@ -1,0 +1,114 @@
+.checklist-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.checklist-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.checklist-header h1 {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #e0e3eb;
+}
+
+.month-selector {
+    padding: 8px 16px;
+    background-color: #151a21;
+    border: 1px solid #2a2e39;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 1rem;
+    outline: none;
+}
+
+.checklist-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 1024px) {
+    .checklist-content {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Checklist Items */
+.checklist-items {
+    background-color: #151a21;
+    border-radius: 12px;
+    border: 1px solid #2a2e39;
+    padding: 24px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.checklist-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #2a2e39;
+}
+
+.checklist-item:last-child {
+    border-bottom: none;
+}
+
+.item-name {
+    color: #e0e3eb;
+    font-size: 0.95rem;
+}
+
+.item-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.control-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid #2a2e39;
+    background-color: #1e232d;
+    color: #848e9c;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+}
+
+.control-btn:hover {
+    background-color: #2a2e39;
+    color: #ffffff;
+}
+
+.item-count {
+    min-width: 24px;
+    text-align: center;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.item-count.positive {
+    color: #ef5350;
+    /* Red for errors */
+}
+
+/* Chart Section */
+.chart-section {
+    background-color: #151a21;
+    border-radius: 12px;
+    border: 1px solid #2a2e39;
+    padding: 24px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    min-height: 500px;
+}

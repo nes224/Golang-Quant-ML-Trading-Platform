@@ -11,6 +11,8 @@ from analysis import calculate_indicators
 from config import Config
 from key_levels import identify_pivot_points, identify_key_levels, get_pivot_positions
 from fvg_detection import detect_fvg, fill_key_levels, detect_break_signal, get_fvg_zones, get_break_signals
+from journal_manager import JournalManager, JournalEntry
+from checklist_manager import ChecklistManager
 
 from fastapi.middleware.cors import CORSMiddleware
 from reference_api import router as reference_router
@@ -235,10 +237,6 @@ async def startup_event():
     data_manager = DataManager(symbol)
     await data_manager.initialize()
     
-    # Start broadcast task
-    asyncio.create_task(broadcast_market_data())
-
-@app.get("/")
 def read_root():
     return {
         "message": "XAU/USD Trading Bot API",
@@ -383,6 +381,52 @@ def calculate_risk(request: RiskCalculationRequest):
         if not result:
             raise HTTPException(status_code=400, detail="Invalid calculation parameters")
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Journal API ---
+
+@app.get("/journal")
+def get_journal_entries():
+    try:
+        return journal_manager.get_entries()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/journal")
+def save_journal_entry(entry: JournalEntry):
+    try:
+        saved_entry = journal_manager.save_entry(entry)
+        return saved_entry
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/journal/{date}")
+def delete_journal_entry(date: str):
+    try:
+        journal_manager.delete_entry(date)
+        return {"message": "Entry deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Checklist API ---
+
+@app.get("/checklist")
+def get_checklist(month: Optional[str] = None):
+    try:
+        return checklist_manager.get_data(month)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ChecklistUpdate(BaseModel):
+    item: str
+    change: int
+    month: Optional[str] = None
+
+@app.post("/checklist/update")
+def update_checklist(update: ChecklistUpdate):
+    try:
+        return checklist_manager.update_count(update.item, update.change, update.month)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

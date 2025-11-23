@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Navbar from './components/Navbar';
 import './dashboard.css';
 
 // Declare Plotly type
@@ -381,83 +382,86 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="dashboard">
-      <header className="dashboard-header">
-        <h1>📊 XAU/USD Candlestick Chart</h1>
-        <div className="symbol-selector">
-          <select
-            value={selectedSymbol}
-            onChange={(e) => {
-              setSelectedSymbol(e.target.value);
-              fetchCandleData();
-            }}
-            className="symbol-select"
-          >
-            <option value="GC=F">Gold Futures (GC=F)</option>
-            <option value="XAUUSD=X">Spot Gold (XAUUSD=X)</option>
-          </select>
+    <>
+      <Navbar />
+      <div className="dashboard">
+        <header className="dashboard-header">
+          <h1>📊 XAU/USD Candlestick Chart</h1>
+          <div className="symbol-selector">
+            <select
+              value={selectedSymbol}
+              onChange={(e) => {
+                setSelectedSymbol(e.target.value);
+                fetchCandleData();
+              }}
+              className="symbol-select"
+            >
+              <option value="GC=F">Gold Futures (GC=F)</option>
+              <option value="XAUUSD=X">Spot Gold (XAUUSD=X)</option>
+            </select>
+          </div>
+        </header>
+
+        <MarketSessions />
+
+        <div className="timeframe-selector">
+          {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
+            <button
+              key={tf}
+              className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}
+              onClick={() => handleTimeframeChange(tf)}
+            >
+              {tf.toUpperCase()}
+            </button>
+          ))}
         </div>
-      </header>
 
-      <MarketSessions />
+        <div className="chart-container">
+          <div ref={chartRef} className="plotly-chart"></div>
 
-      <div className="timeframe-selector">
-        {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
-          <button
-            key={tf}
-            className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}
-            onClick={() => handleTimeframeChange(tf)}
-          >
-            {tf.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      <div className="chart-container">
-        <div ref={chartRef} className="plotly-chart"></div>
-
-        <div className="key-levels-section">
-          <h3>🎯 Key Support/Resistance Levels</h3>
-          <div className="key-levels-grid">
-            {candleData?.key_levels?.slice(0, 5).map((level: any, idx: number) => (
-              <div key={idx} className={`level-card ${level.type}`}>
-                <div className="level-header">
-                  <span className="level-type">{level.type ? level.type.toUpperCase() : 'N/A'}</span>
-                  <span className="level-strength">Strength: {level.strength || 0}</span>
+          <div className="key-levels-section">
+            <h3>🎯 Key Support/Resistance Levels</h3>
+            <div className="key-levels-grid">
+              {candleData?.key_levels?.slice(0, 5).map((level: any, idx: number) => (
+                <div key={idx} className={`level-card ${level.type}`}>
+                  <div className="level-header">
+                    <span className="level-type">{level.type ? level.type.toUpperCase() : 'N/A'}</span>
+                    <span className="level-strength">Strength: {level.strength || 0}</span>
+                  </div>
+                  <div className="level-price">{level.level || 'N/A'}</div>
+                  <div className="level-details">
+                    <span>High Touches: {level.high_touches || 0}</span>
+                    <span>Low Touches: {level.low_touches || 0}</span>
+                  </div>
                 </div>
-                <div className="level-price">{level.level || 'N/A'}</div>
-                <div className="level-details">
-                  <span>High Touches: {level.high_touches || 0}</span>
-                  <span>Low Touches: {level.low_touches || 0}</span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div className="chart-info">
-          <div className="info-card">
-            <span className="info-label">Total Candles:</span>
-            <span className="info-value">{candleData?.total || 0}</span>
-          </div>
-          <div className="info-card">
-            <span className="info-label">Latest Close:</span>
-            <span className="info-value">
-              {candleData?.candles?.[candleData.candles.length - 1]?.close.toFixed(2) || 'N/A'}
-            </span>
-          </div>
-          <div className="info-card">
-            <span className="info-label">RSI:</span>
-            <span className="info-value">
-              {candleData?.candles?.[candleData.candles.length - 1]?.rsi?.toFixed(2) || 'N/A'}
-            </span>
-          </div>
-          <div className="info-card">
-            <span className="info-label">Pivot Points:</span>
-            <span className="info-value">{candleData?.pivot_points?.length || 0}</span>
+          <div className="chart-info">
+            <div className="info-card">
+              <span className="info-label">Total Candles:</span>
+              <span className="info-value">{candleData?.total || 0}</span>
+            </div>
+            <div className="info-card">
+              <span className="info-label">Latest Close:</span>
+              <span className="info-value">
+                {candleData?.candles?.[candleData.candles.length - 1]?.close.toFixed(2) || 'N/A'}
+              </span>
+            </div>
+            <div className="info-card">
+              <span className="info-label">RSI:</span>
+              <span className="info-value">
+                {candleData?.candles?.[candleData.candles.length - 1]?.rsi?.toFixed(2) || 'N/A'}
+              </span>
+            </div>
+            <div className="info-card">
+              <span className="info-label">Pivot Points:</span>
+              <span className="info-value">{candleData?.pivot_points?.length || 0}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

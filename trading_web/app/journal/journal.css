@@ -1,0 +1,224 @@
+.journal-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.journal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.journal-header h1 {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #e0e3eb;
+}
+
+.add-btn {
+    background-color: #2962ff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.add-btn:hover {
+    background-color: #1e4bd8;
+}
+
+/* Table Styles */
+.journal-table-container {
+    background-color: #151a21;
+    border-radius: 12px;
+    border: 1px solid #2a2e39;
+    overflow-x: auto;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.journal-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1000px;
+}
+
+.journal-table th,
+.journal-table td {
+    padding: 16px;
+    text-align: right;
+    border-bottom: 1px solid #2a2e39;
+    color: #e0e3eb;
+}
+
+.journal-table th {
+    background-color: #1e232d;
+    font-weight: 600;
+    color: #848e9c;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.journal-table th:first-child,
+.journal-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background-color: inherit;
+    z-index: 1;
+}
+
+.journal-table th:first-child {
+    background-color: #1e232d;
+}
+
+.journal-table td:first-child {
+    background-color: #151a21;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 500;
+}
+
+.journal-table tr:hover td {
+    background-color: #1e232d;
+}
+
+/* Value Colors */
+.positive {
+    color: #26a69a !important;
+}
+
+.negative {
+    color: #ef5350 !important;
+}
+
+.neutral {
+    color: #848e9c !important;
+}
+
+/* Form Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background-color: #1e232d;
+    padding: 32px;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 500px;
+    border: 1px solid #2a2e39;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.modal-header h2 {
+    font-size: 1.5rem;
+    color: #e0e3eb;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #848e9c;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+.close-btn:hover {
+    color: #ffffff;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #848e9c;
+    font-size: 0.9rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px 12px;
+    background-color: #151a21;
+    border: 1px solid #2a2e39;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 1rem;
+    transition: border-color 0.2s;
+}
+
+.form-control:focus {
+    border-color: #2962ff;
+    outline: none;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 32px;
+}
+
+.cancel-btn {
+    background-color: transparent;
+    border: 1px solid #2a2e39;
+    color: #e0e3eb;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.cancel-btn:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.submit-btn {
+    background-color: #2962ff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.submit-btn:hover {
+    background-color: #1e4bd8;
+}
+
+.delete-btn {
+    background: none;
+    border: none;
+    color: #ef5350;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.delete-btn:hover {
+    opacity: 1;
+}

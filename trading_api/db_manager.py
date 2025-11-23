@@ -20,6 +20,8 @@ class DatabaseManager:
     def __init__(self):
         self.connection_pool = None
         self._initialize_pool()
+        self._initialize_tables()
+        self._migrate_from_json()
     
     def _initialize_pool(self):
         """Initialize connection pool"""
@@ -35,7 +37,8 @@ class DatabaseManager:
             print("[OK] Database connection pool initialized")
         except Exception as e:
             print(f"[ERROR] Failed to initialize database pool: {e}")
-            raise
+            # Don't raise here to allow app to start even if DB is down (optional)
+            # raise 
     
     def get_connection(self):
         """Get a connection from the pool"""
@@ -49,29 +52,282 @@ class DatabaseManager:
         """Close all connections in the pool"""
         if self.connection_pool:
             self.connection_pool.closeall()
+
+    def _initialize_tables(self):
+        """Initialize database tables if they don't exist"""
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Journal Table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS journal_entries (
+                        date DATE PRIMARY KEY,
+                        trade1 NUMERIC DEFAULT 0,
+                        trade2 NUMERIC DEFAULT 0,
+                        trade3 NUMERIC DEFAULT 0,
+                        deposit NUMERIC DEFAULT 0,
+                        withdraw NUMERIC DEFAULT 0,
+                        note TEXT,
+                        profit NUMERIC DEFAULT 0,
+                        total NUMERIC DEFAULT 0,
+                        capital NUMERIC DEFAULT 0,
+                        winrate NUMERIC DEFAULT 0
+                    )
+                """)
+
+                # Checklist Table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS checklist_monthly (
+                        id SERIAL PRIMARY KEY,
+                        month VARCHAR(7) NOT NULL,
+                        item_name TEXT NOT NULL,
+                        count INTEGER DEFAULT 0,
+                        UNIQUE(month, item_name)
+                    )
+                """)
+                
+                # Initialize default checklist items for current month
+                current_month = datetime.now().strftime("%Y-%m")
+                default_items = [
+                    "เข้าเร็วเกินไป (กลัวไม่ได้เทรด)",
+                    "เข้าช้าเกินไป (เลยราคาที่ได้เปรียบไปแล้ว)",
+                    "เข้าสวนเทรน M30",
+                    "Sell ใกล้แนวรับสำคัญของ H4",
+                    "Buy ใกล้แนวต้านสำคัญของ H4",
+                    "Sell ใกล้แนวรับสำคัญของ M30",
+                    "Buy ใกล้แนวต้านสำคัญของ M30",
+                    "ไม่ปล่อยให้จบตามแผนที่วางไว้",
+                    "ตั้ง SL สั้นเกินไป (กลัว)",
+                    "ตั้ง SL สั้นเกินไป",
+                    "ตั้ง TP ไกลเกินไป (โลภ)",
+                    "เข้าเทรดไม่ตรงระบบ",
+                    "มองโครงสร้างราคาผิด",
+                    "แก้แค้นออเดอร์",
+                    "เข้าเทรดช่วงข่าวกล่องแดง",
+                    "เทรดช่วงตื่นนอนก่อนตลาดหุ้นสหรัฐเปิด",
+                    "เทรดตอนตลาดผันผวน",
+                    "แพ้ตามระบบที่วางไว้",
+                    "ชนะตามระบบตามแผนที่ได้วางไว้"
+                ]
+                
+                for item in default_items:
+                    cur.execute("""
+                        INSERT INTO checklist_monthly (month, item_name, count)
+                        VALUES (%s, %s, 0)
+                        ON CONFLICT (month, item_name) DO NOTHING
+                    """, (current_month, item))
+
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to initialize tables: {e}")
+        finally:
+            self.return_connection(conn)
+
+    def _migrate_from_json(self):
+        """Migrate data from JSON files to PostgreSQL"""
+        # Migrate Journal
+        if os.path.exists("journal_data.json"):
+            try:
+                with open("journal_data.json", 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, list) and len(data) > 0:
+                        conn = self.get_connection()
+                        try:
+                            with conn.cursor() as cur:
+                                cur.execute("SELECT COUNT(*) FROM journal_entries")
+                                if cur.fetchone()[0] == 0:
+                                    print("Migrating journal_data.json to PostgreSQL...")
+                                    for entry in data:
+                                        cur.execute("""
+                                            INSERT INTO journal_entries (
+                                                date, trade1, trade2, trade3, deposit, withdraw, note, 
+                                                profit, total, capital, winrate
+                                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                            ON CONFLICT (date) DO NOTHING
+                                        """, (
+                                            entry.get('date'),
+                                            entry.get('trade1', 0),
+                                            entry.get('trade2', 0),
+                                            entry.get('trade3', 0),
+                                            entry.get('deposit', 0),
+                                            entry.get('withdraw', 0),
+                                            entry.get('note', ''),
+                                            entry.get('profit', 0),
+                                            entry.get('total', 0),
+                                            entry.get('capital', 0),
+                                            entry.get('winrate', 0)
+                                        ))
+                                    conn.commit()
+                                    os.rename("journal_data.json", "journal_data.json.bak")
+                        finally:
+                            self.return_connection(conn)
+            except Exception as e:
+                print(f"Error migrating journal: {e}")
+
+        # Migrate Checklist
+        if os.path.exists("checklist_data.json"):
+            try:
+                with open("checklist_data.json", 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        conn = self.get_connection()
+                        try:
+                            with conn.cursor() as cur:
+                                migrated = False
+                                for month, items in data.items():
+                                    cur.execute("SELECT COUNT(*) FROM checklist_monthly WHERE month = %s", (month,))
+                                    if cur.fetchone()[0] == 0:
+                                        print(f"Migrating checklist for {month}...")
+                                        for item, count in items.items():
+                                            cur.execute("""
+                                                INSERT INTO checklist_monthly (month, item_name, count)
+                                                VALUES (%s, %s, %s)
+                                                ON CONFLICT (month, item_name) DO UPDATE SET count = EXCLUDED.count
+                                            """, (month, item, count))
+                                        migrated = True
+                                conn.commit()
+                                if migrated:
+                                    os.rename("checklist_data.json", "checklist_data.json.bak")
+                        finally:
+                            self.return_connection(conn)
+            except Exception as e:
+                print(f"Error migrating checklist: {e}")
+
+    # ==================== JOURNAL OPERATIONS ====================
     
-    # ==================== TRADE OPERATIONS ====================
+    def get_journal_entries(self) -> List[Dict]:
+        conn = self.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM journal_entries ORDER BY date")
+                rows = cur.fetchall()
+                # Convert date objects to strings
+                for row in rows:
+                    if isinstance(row['date'], date):
+                        row['date'] = row['date'].isoformat()
+                return rows
+        finally:
+            self.return_connection(conn)
+
+    def save_journal_entry(self, entry_data: Dict) -> Dict:
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO journal_entries (
+                        date, trade1, trade2, trade3, deposit, withdraw, note, 
+                        profit, total, capital, winrate
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT(date) DO UPDATE SET
+                        trade1=EXCLUDED.trade1,
+                        trade2=EXCLUDED.trade2,
+                        trade3=EXCLUDED.trade3,
+                        deposit=EXCLUDED.deposit,
+                        withdraw=EXCLUDED.withdraw,
+                        note=EXCLUDED.note,
+                        profit=EXCLUDED.profit,
+                        total=EXCLUDED.total,
+                        capital=EXCLUDED.capital,
+                        winrate=EXCLUDED.winrate
+                """, (
+                    entry_data['date'],
+                    entry_data.get('trade1', 0),
+                    entry_data.get('trade2', 0),
+                    entry_data.get('trade3', 0),
+                    entry_data.get('deposit', 0),
+                    entry_data.get('withdraw', 0),
+                    entry_data.get('note', ''),
+                    entry_data.get('profit', 0),
+                    entry_data.get('total', 0),
+                    entry_data.get('capital', 0),
+                    entry_data.get('winrate', 0)
+                ))
+                conn.commit()
+                return entry_data
+        finally:
+            self.return_connection(conn)
+
+    def delete_journal_entry(self, date_str: str):
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM journal_entries WHERE date = %s", (date_str,))
+                conn.commit()
+        finally:
+            self.return_connection(conn)
+
+    # ==================== CHECKLIST OPERATIONS ====================
+
+    def get_checklist(self, month: str) -> Dict:
+        conn = self.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Ensure items exist (lazy init handled in _initialize_tables for current month, 
+                # but if user requests a new month, we might need to init it)
+                cur.execute("SELECT item_name, count FROM checklist_monthly WHERE month = %s", (month,))
+                rows = cur.fetchall()
+                
+                if not rows:
+                    # Init defaults for this month
+                    default_items = [
+                        "เข้าเร็วเกินไป (กลัวไม่ได้เทรด)",
+                        "เข้าช้าเกินไป (เลยราคาที่ได้เปรียบไปแล้ว)",
+                        "เข้าสวนเทรน M30",
+                        "Sell ใกล้แนวรับสำคัญของ H4",
+                        "Buy ใกล้แนวต้านสำคัญของ H4",
+                        "Sell ใกล้แนวรับสำคัญของ M30",
+                        "Buy ใกล้แนวต้านสำคัญของ M30",
+                        "ไม่ปล่อยให้จบตามแผนที่วางไว้",
+                        "ตั้ง SL สั้นเกินไป (กลัว)",
+                        "ตั้ง SL สั้นเกินไป",
+                        "ตั้ง TP ไกลเกินไป (โลภ)",
+                        "เข้าเทรดไม่ตรงระบบ",
+                        "มองโครงสร้างราคาผิด",
+                        "แก้แค้นออเดอร์",
+                        "เข้าเทรดช่วงข่าวกล่องแดง",
+                        "เทรดช่วงตื่นนอนก่อนตลาดหุ้นสหรัฐเปิด",
+                        "เทรดตอนตลาดผันผวน",
+                        "แพ้ตามระบบที่วางไว้",
+                        "ชนะตามระบบตามแผนที่ได้วางไว้"
+                    ]
+                    for item in default_items:
+                        cur.execute("""
+                            INSERT INTO checklist_monthly (month, item_name, count)
+                            VALUES (%s, %s, 0)
+                            ON CONFLICT (month, item_name) DO NOTHING
+                        """, (month, item))
+                    conn.commit()
+                    
+                    # Fetch again
+                    cur.execute("SELECT item_name, count FROM checklist_monthly WHERE month = %s", (month,))
+                    rows = cur.fetchall()
+                
+                items = {row['item_name']: row['count'] for row in rows}
+                return {"month": month, "items": items}
+        finally:
+            self.return_connection(conn)
+
+    def update_checklist_item(self, month: str, item: str, change: int) -> Dict:
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Upsert logic
+                cur.execute("""
+                    INSERT INTO checklist_monthly (month, item_name, count)
+                    VALUES (%s, %s, GREATEST(0, %s))
+                    ON CONFLICT (month, item_name) 
+                    DO UPDATE SET count = GREATEST(0, checklist_monthly.count + %s)
+                """, (month, item, max(0, change), change))
+                conn.commit()
+            
+            return self.get_checklist(month)
+        finally:
+            self.return_connection(conn)
+
+    # ==================== TRADE OPERATIONS (Original) ====================
     
     def create_trade(self, trade_data: Dict) -> int:
-        """
-        Create a new trade record.
-        
-        Args:
-            trade_data: Dictionary containing trade information
-                {
-                    'symbol': str,
-                    'timeframe': str,
-                    'direction': str (BUY/SELL),
-                    'entry_price': float,
-                    'sl_price': float,
-                    'tp_price': float,
-                    'lot_size': float,
-                    'signal_data': dict (optional)
-                }
-        
-        Returns:
-            trade_id: ID of the created trade
-        """
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
@@ -106,21 +362,9 @@ class DatabaseManager:
             self.return_connection(conn)
     
     def close_trade(self, trade_id: int, exit_price: float, status: str = 'CLOSED') -> Dict:
-        """
-        Close an existing trade and calculate profit/loss.
-        
-        Args:
-            trade_id: ID of the trade to close
-            exit_price: Exit price
-            status: 'CLOSED' or 'CANCELLED'
-        
-        Returns:
-            Trade data with calculated profit/loss
-        """
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Get trade data
                 cur.execute("SELECT * FROM trades WHERE id = %s", (trade_id,))
                 trade = cur.fetchone()
                 
@@ -130,14 +374,10 @@ class DatabaseManager:
                 if trade['status'] != 'OPEN':
                     raise ValueError(f"Trade #{trade_id} is already {trade['status']}")
                 
-                # Calculate profit/loss
                 direction_multiplier = 1 if trade['direction'] == 'BUY' else -1
                 profit_loss_pips = (exit_price - trade['entry_price']) * direction_multiplier
-                
-                # Assuming 1 pip = $10 per lot (adjust based on symbol)
                 profit_loss = profit_loss_pips * trade['lot_size'] * 10
                 
-                # Update trade
                 update_query = """
                     UPDATE trades
                     SET timestamp_close = %s, exit_price = %s, profit_loss = %s,
@@ -150,8 +390,6 @@ class DatabaseManager:
                 conn.commit()
                 
                 print(f"[OK] Trade #{trade_id} closed: P/L = ${profit_loss:.2f} ({profit_loss_pips:.2f} pips)")
-                
-                # Update performance summary
                 self._update_performance_summary(date.today())
                 
                 return {
@@ -167,7 +405,6 @@ class DatabaseManager:
             self.return_connection(conn)
     
     def get_open_trades(self) -> List[Dict]:
-        """Get all open trades"""
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -177,7 +414,6 @@ class DatabaseManager:
             self.return_connection(conn)
     
     def get_trade_history(self, limit: int = 100, symbol: Optional[str] = None) -> List[Dict]:
-        """Get trade history"""
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -195,11 +431,9 @@ class DatabaseManager:
     # ==================== PERFORMANCE OPERATIONS ====================
     
     def _update_performance_summary(self, target_date: date):
-        """Update performance summary for a specific date"""
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
-                # Calculate metrics
                 query = """
                     SELECT
                         COUNT(*) as total_trades,
@@ -224,7 +458,6 @@ class DatabaseManager:
                 win_rate = (win_trades / total_trades * 100) if total_trades > 0 else 0
                 profit_factor = (total_profit / total_loss) if total_loss > 0 else 0
                 
-                # Upsert performance summary
                 upsert_query = """
                     INSERT INTO performance_summary (
                         date, total_trades, win_trades, loss_trades,
@@ -251,7 +484,6 @@ class DatabaseManager:
             self.return_connection(conn)
     
     def get_performance_summary(self, days: int = 30) -> List[Dict]:
-        """Get performance summary for the last N days"""
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -264,7 +496,6 @@ class DatabaseManager:
             self.return_connection(conn)
     
     def get_overall_stats(self) -> Dict:
-        """Get overall trading statistics"""
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -288,27 +519,18 @@ class DatabaseManager:
     # ==================== MARKET DATA CACHING ====================
     
     def cache_market_data(self, symbol: str, timeframe: str, df) -> None:
-        """
-        Cache OHLC data to database for faster access.
-        
-        Args:
-            symbol: Trading symbol
-            timeframe: Timeframe (1d, 4h, 1h, etc.)
-            df: DataFrame with OHLC data
-        """
         if df is None or df.empty:
             return
             
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
-                # Prepare data for bulk insert
                 data_to_insert = []
                 for idx, row in df.iterrows():
                     data_to_insert.append((
                         symbol,
                         timeframe,
-                        idx,  # timestamp
+                        idx,
                         float(row['Open']),
                         float(row['High']),
                         float(row['Low']),
@@ -316,7 +538,6 @@ class DatabaseManager:
                         int(row.get('Volume', 0))
                     ))
                 
-                # Bulk insert with ON CONFLICT DO NOTHING
                 insert_query = """
                     INSERT INTO market_data (symbol, timeframe, timestamp, open, high, low, close, volume)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -332,17 +553,6 @@ class DatabaseManager:
             self.return_connection(conn)
     
     def get_cached_market_data(self, symbol: str, timeframe: str, limit: int = 500):
-        """
-        Get cached OHLC data from database.
-        
-        Args:
-            symbol: Trading symbol
-            timeframe: Timeframe
-            limit: Number of candles to retrieve
-            
-        Returns:
-            DataFrame with OHLC data or None if not found
-        """
         import pandas as pd
         
         conn = self.get_connection()
@@ -361,13 +571,11 @@ class DatabaseManager:
                 if not rows:
                     return None
                 
-                # Convert to DataFrame
                 df = pd.DataFrame(rows)
                 df.set_index('timestamp', inplace=True)
                 df.index = pd.to_datetime(df.index)
                 df.sort_index(inplace=True)
                 
-                # Rename columns to match expected format
                 df.rename(columns={
                     'open': 'Open',
                     'high': 'High',
@@ -376,12 +584,10 @@ class DatabaseManager:
                     'volume': 'Volume'
                 }, inplace=True)
 
-                # Convert numeric columns to float (handle Decimal from DB)
                 numeric_cols = ['Open', 'High', 'Low', 'Close']
                 for col in numeric_cols:
                     df[col] = df[col].astype(float)
                 
-                # Volume should be int
                 df['Volume'] = df['Volume'].astype(int)
                 
                 print(f"[OK] Retrieved {len(df)} cached candles for {symbol} {timeframe}")
@@ -392,13 +598,5 @@ class DatabaseManager:
         finally:
             self.return_connection(conn)
 
-
 # Global instance
-db_manager = None
-
-def get_db_manager() -> DatabaseManager:
-    """Get or create global DatabaseManager instance"""
-    global db_manager
-    if db_manager is None:
-        db_manager = DatabaseManager()
-    return db_manager
+db = DatabaseManager()
