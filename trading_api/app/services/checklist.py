@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from db_manager import db
+from app.core.database import db
 
 class ChecklistManager:
     def __init__(self):

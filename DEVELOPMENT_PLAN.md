@@ -309,6 +309,77 @@ NesHedgeFund/
 
 ## 🚀 Quick Start Commands
 
+# Development Plan: Advanced Gold Analysis Strategy
+
+## Overview
+This document outlines the implementation plan for advanced market analysis features specifically tailored for Gold (XAU/USD) trading. The goal is to detect market movements driven by "Smart Money" flows and macro correlations, even in the absence of high-impact news events.
+
+## 1. Correlation Analysis (The "No News" Movers)
+
+Gold often moves inversely to the US Dollar and Bond Yields. We will implement real-time monitoring of these assets.
+
+### 1.1 Dollar Index (DXY)
+*   **Relationship:** Inverse correlation.
+*   **Logic:**
+    *   If DXY drops significantly -> Gold likely rises (money flows out of USD into assets).
+    *   If DXY rallies -> Gold likely falls.
+*   **Data Source:** TradingView (DXY) or Exness (USDX).
+*   **Implementation:**
+    *   Fetch real-time DXY price.
+    *   Calculate correlation coefficient (e.g., 20-period rolling correlation).
+    *   Alert when DXY makes a significant move (>0.1% in 5m) while Gold is lagging.
+
+### 1.2 US 10-Year Bond Yield (US10Y)
+*   **Relationship:** Inverse correlation.
+*   **Logic:**
+    *   Yields Drop -> Investors seek safety/non-yielding assets -> Gold Buy.
+    *   Yields Rise -> Opportunity cost of holding Gold rises -> Gold Sell.
+*   **Data Source:** TradingView (US10Y) or Yahoo Finance (`^TNX`).
+*   **Implementation:**
+    *   Fetch `^TNX` (Yahoo Finance ticker for 10-year yield).
+    *   Monitor for sharp divergences.
+
+### 1.3 Risk Sentiment (SPX, NDX)
+*   **Relationship:** Inverse (Safe Haven Flow).
+*   **Logic:**
+    *   Panic in Stock Market (SPX/NDX Drop) -> Money flows to Gold (Safe Haven).
+*   **Data Source:** Yahoo Finance (`^GSPC` for S&P 500, `^IXIC` for Nasdaq).
+
+## 2. Futures Order Flow & Liquidity
+
+Price often moves to "hunt" liquidity (Stop Losses) before reversing or continuing.
+
+### 2.1 Stop Hunts & Wick Rejections
+*   **Logic:**
+    *   Price spikes above a key resistance zone (Key Level / Pivot).
+    *   Quickly rejects and closes back below the zone.
+    *   **Interpretation:** MM (Market Makers) triggered buy stops (liquidity) to fill sell orders.
+*   **Detection:**
+    *   Identify Key Levels (already implemented).
+    *   Detect "Wick Over Zone" pattern: High > Zone Top, Close < Zone Top.
+
+### 2.2 Gold Futures (GC) Leading Spot
+*   **Logic:** Futures contracts often have higher volume and can lead spot price action by a few seconds/minutes.
+*   **Implementation:**
+    *   Compare `GC=F` (Gold Futures) vs `XAUUSD` (Spot).
+    *   If GC moves aggressively while Spot is stalling, expect Spot to follow.
+
+## 3. Implementation Roadmap
+
+### Phase 1: Data Acquisition
+- [ ] Extend `fetch_data` to support multi-symbol fetching (`DX-Y.NYB` or `^DXY`, `^TNX`, `^GSPC`).
+- [ ] Create a `MarketCorrelationService` to manage these data streams.
+
+### Phase 2: Analysis Logic
+- [ ] Implement `calculate_correlation(symbol_a, symbol_b, period)`.
+- [ ] Implement `detect_divergence(symbol_a, symbol_b)`.
+- [ ] Implement `detect_liquidity_grab(df, key_levels)`.
+
+### Phase 3: Integration
+- [ ] Add correlation metrics to the Dashboard.
+- [ ] Add "Smart Money" alerts to WebSocket stream.
+
+
 ```bash
 # Start Backend
 cd trading_api

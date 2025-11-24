@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
 from pydantic import BaseModel
-from db_manager import db
+from app.core.database import db
 
 class JournalEntry(BaseModel):
     date: str

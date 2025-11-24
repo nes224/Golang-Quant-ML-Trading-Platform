@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import Dict, Optional
-from data_loader import fetch_data
-from analysis import calculate_indicators
+from app.services.data_provider import fetch_data
+from app.services.analysis.indicators import calculate_indicators
 
 def detect_trend(df: pd.DataFrame, method: str = "ema") -> str:
     """

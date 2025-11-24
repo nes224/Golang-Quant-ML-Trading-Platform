@@ -107,8 +107,8 @@ def get_risk_parameters(symbol, timeframe, account_balance, risk_percent, direct
     Returns:
         dict with all risk parameters
     """
-    from data_loader import fetch_data
-    from analysis import calculate_indicators
+    from app.services.data_provider import fetch_data
+    from app.services.analysis.indicators import calculate_indicators
     
     # Fetch data and calculate ATR
     if timeframe == "1m":

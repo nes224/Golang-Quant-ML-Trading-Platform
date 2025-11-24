@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# NesHedgeFund - MacOS Startup Script
-# Uses Yahoo Finance as data source
+# NesHedgeFund - Twelve Data Startup Script
+# Uses Twelve Data API as data source
 
-echo "🚀 Starting NesHedgeFund (MacOS - Yahoo Finance)..."
+echo "🚀 Starting NesHedgeFund (Twelve Data API)..."
 
 # Set environment
-export DATA_SOURCE=YAHOO
+export DATA_SOURCE=TWELVE
 
 # Start API Server
 echo "📡 Starting API Server..."
@@ -27,7 +27,7 @@ echo ""
 echo "✅ NesHedgeFund is running!"
 echo "📊 Dashboard: http://localhost:3000"
 echo "🔌 API: http://localhost:8000"
-echo "📈 Data Source: Yahoo Finance"
+echo "📈 Data Source: Twelve Data API"
 echo ""
 echo "Press Ctrl+C to stop all services"
 

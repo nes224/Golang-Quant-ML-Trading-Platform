@@ -4,7 +4,7 @@ yfinance
 pandas
 polars
 plotly
-MetaTrader5
+# MetaTrader5  # Windows only - not needed for Yahoo Finance on macOS
 psycopg2-binary
 python-dotenv
 requests

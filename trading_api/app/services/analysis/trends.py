@@ -108,8 +108,8 @@ def calculate_multi_tf_trend(symbol: str = "GC=F") -> Dict[str, Dict]:
     Returns:
         Dictionary with trend info for each timeframe
     """
-    from data_loader import fetch_data
-    from analysis import calculate_indicators
+    from app.services.data_provider import fetch_data
+    from app.services.analysis.indicators import calculate_indicators
     
     timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
     results = {}

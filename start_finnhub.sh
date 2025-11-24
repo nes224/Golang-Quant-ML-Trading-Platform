@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# NesHedgeFund - MacOS Startup Script
-# Uses Yahoo Finance as data source
+# NesHedgeFund - Finnhub Startup Script
+# Uses Finnhub API as data source
 
-echo "🚀 Starting NesHedgeFund (MacOS - Yahoo Finance)..."
+echo "🚀 Starting NesHedgeFund (Finnhub API)..."
 
 # Set environment
-export DATA_SOURCE=YAHOO
+export DATA_SOURCE=FINNHUB
 
 # Start API Server
 echo "📡 Starting API Server..."
 cd "$(dirname "$0")/trading_api"
-python3 run.py &
+uvicorn main:app --reload --port 8000 &
 API_PID=$!
 
 # Wait for API to start
@@ -27,7 +27,7 @@ echo ""
 echo "✅ NesHedgeFund is running!"
 echo "📊 Dashboard: http://localhost:3000"
 echo "🔌 API: http://localhost:8000"
-echo "📈 Data Source: Yahoo Finance"
+echo "📈 Data Source: Finnhub API"
 echo ""
 echo "Press Ctrl+C to stop all services"
 

@@ -8,8 +8,8 @@ import json
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Load .env explicitly from the same directory
-env_path = Path(__file__).parent / '.env'
+# Load .env explicitly from the project root (two levels up from app/core)
+env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 class DatabaseManager:
@@ -20,8 +20,11 @@ class DatabaseManager:
     def __init__(self):
         self.connection_pool = None
         self._initialize_pool()
-        self._initialize_tables()
-        self._migrate_from_json()
+        if self.connection_pool:
+            self._initialize_tables()
+            self._migrate_from_json()
+        else:
+            print("[WARNING] Database not available. Some features will be disabled.")
     
     def _initialize_pool(self):
         """Initialize connection pool"""
@@ -42,11 +45,14 @@ class DatabaseManager:
     
     def get_connection(self):
         """Get a connection from the pool"""
+        if self.connection_pool is None:
+            raise Exception("Database connection pool not initialized. Please check database configuration.")
         return self.connection_pool.getconn()
     
     def return_connection(self, conn):
         """Return a connection to the pool"""
-        self.connection_pool.putconn(conn)
+        if self.connection_pool:
+            self.connection_pool.putconn(conn)
     
     def close_all_connections(self):
         """Close all connections in the pool"""
@@ -116,6 +122,67 @@ class DatabaseManager:
                         VALUES (%s, %s, 0)
                         ON CONFLICT (month, item_name) DO NOTHING
                     """, (current_month, item))
+
+                # Trades Table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS trades (
+                        id SERIAL PRIMARY KEY,
+                        timestamp_open TIMESTAMP NOT NULL,
+                        timestamp_close TIMESTAMP,
+                        symbol VARCHAR(20) NOT NULL,
+                        timeframe VARCHAR(10),
+                        direction VARCHAR(10) NOT NULL,
+                        entry_price NUMERIC NOT NULL,
+                        exit_price NUMERIC,
+                        sl_price NUMERIC,
+                        tp_price NUMERIC,
+                        lot_size NUMERIC NOT NULL,
+                        profit_loss NUMERIC,
+                        profit_loss_pips NUMERIC,
+                        signal_data JSONB,
+                        status VARCHAR(20) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # Performance Summary Table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS performance_summary (
+                        date DATE PRIMARY KEY,
+                        total_trades INTEGER DEFAULT 0,
+                        win_trades INTEGER DEFAULT 0,
+                        loss_trades INTEGER DEFAULT 0,
+                        win_rate NUMERIC DEFAULT 0,
+                        profit_factor NUMERIC DEFAULT 0,
+                        total_profit_loss NUMERIC DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # Market Data Cache Table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS market_data (
+                        id SERIAL PRIMARY KEY,
+                        symbol VARCHAR(20) NOT NULL,
+                        timeframe VARCHAR(10) NOT NULL,
+                        timestamp TIMESTAMP NOT NULL,
+                        open NUMERIC NOT NULL,
+                        high NUMERIC NOT NULL,
+                        low NUMERIC NOT NULL,
+                        close NUMERIC NOT NULL,
+                        volume BIGINT DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(symbol, timeframe, timestamp)
+                    )
+                """)
+                
+                # Create indexes for better performance
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
+                    CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
+                    CREATE INDEX IF NOT EXISTS idx_trades_timestamp_open ON trades(timestamp_open DESC);
+                    CREATE INDEX IF NOT EXISTS idx_market_data_lookup ON market_data(symbol, timeframe, timestamp DESC);
+                """)
 
                 conn.commit()
         except Exception as e:
@@ -548,7 +615,9 @@ class DatabaseManager:
                 print(f"[OK] Cached {len(data_to_insert)} candles for {symbol} {timeframe}")
         except Exception as e:
             conn.rollback()
-            print(f"[ERROR] Failed to cache market data: {e}")
+            # Silently skip if database/table not available
+            if "does not exist" not in str(e) and "Database connection pool not initialized" not in str(e):
+                print(f"[ERROR] Failed to cache market data: {e}")
         finally:
             self.return_connection(conn)
     
@@ -593,7 +662,9 @@ class DatabaseManager:
                 print(f"[OK] Retrieved {len(df)} cached candles for {symbol} {timeframe}")
                 return df
         except Exception as e:
-            print(f"[ERROR] Failed to get cached data: {e}")
+            # Silently skip if database/table not available
+            if "does not exist" not in str(e) and "Database connection pool not initialized" not in str(e):
+                print(f"[ERROR] Failed to get cached data: {e}")
             return None
         finally:
             self.return_connection(conn)

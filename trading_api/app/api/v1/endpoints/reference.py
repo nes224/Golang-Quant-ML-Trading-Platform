@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from reference_indicators import get_dxy_analysis, get_all_reference_indicators
+from app.services.analysis.reference import get_dxy_analysis, get_all_reference_indicators
 
 router = APIRouter()
 

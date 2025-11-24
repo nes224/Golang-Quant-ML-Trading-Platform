@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from typing import Optional, List
-from db_manager import db
+from app.core.database import db
 
 class NewsManager:
     """
@@ -13,6 +13,10 @@ class NewsManager:
     
     def _ensure_table(self):
         """Create news table if not exists"""
+        if db.connection_pool is None:
+            print("[WARNING] Database not available. News features will be disabled.")
+            return
+            
         conn = db.get_connection()
         try:
             with conn.cursor() as cur:
