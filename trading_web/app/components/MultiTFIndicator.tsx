@@ -43,7 +43,7 @@ export default function MultiTFIndicator({ symbol }: MultiTFIndicatorProps) {
         return '?';
     };
 
-    const timeframes = ['15m', '30m', '1h', '4h', '1d'];
+    const timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
 
     return (
         <div className="multi-tf-indicator-inline">

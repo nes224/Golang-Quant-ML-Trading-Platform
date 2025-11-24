@@ -143,50 +143,70 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
-
   // Fetch data on mount and when dependencies change
   useEffect(() => {
     fetchCandleData();
   }, [selectedTimeframe, selectedSymbol]);
 
+  // WebSocket Connection
+  const wsRef = useRef<WebSocket | null>(null);
+
   useEffect(() => {
-    // WebSocket Connection for real-time updates
-    const ws = new WebSocket('ws://localhost:8000/ws');
-
-    ws.onopen = () => {
-      console.log('Connected to WebSocket');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'candle_update' && data.timeframe === selectedTimeframe) {
-          // Only update if the timestamp is newer or same (live update)
-          setCandleData((prevData: any) => {
-            // Simple replacement for now, can be optimized to merge
-            return data;
-          });
-        }
-      } catch (error) {
-        console.error('WebSocket message parsing error:', error);
+    // Function to connect WebSocket
+    const connectWebSocket = () => {
+      // Close existing connection if any
+      if (wsRef.current) {
+        wsRef.current.close();
       }
+
+      const ws = new WebSocket('ws://localhost:8000/ws');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('Connected to WebSocket');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'candle_update' && data.timeframe === selectedTimeframe) {
+            // Only update if the timestamp is newer or same (live update)
+            setCandleData((prevData: any) => {
+              // If we have previous data, we might want to merge or just replace
+              // For now, replacing is safer to ensure consistency with backend analysis
+              return data;
+            });
+          }
+        } catch (error) {
+          console.error('WebSocket message parsing error:', error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected, retrying in 3s...');
+        // Simple reconnect logic
+        setTimeout(() => {
+          if (wsRef.current === ws) { // Only reconnect if this is still the active connection
+            connectWebSocket();
+          }
+        }, 3000);
+      };
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-    };
+    connectWebSocket();
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, [selectedTimeframe]);
+  }, [selectedTimeframe]); // Re-connect when timeframe changes to ensure clean state
 
   // Render chart when data changes
   useEffect(() => {
@@ -218,7 +238,17 @@ export default function Dashboard() {
     });
 
     // Prepare data for Plotly
-    const x = candles.map((c: any) => c.time);
+    // Format dates for better readability on category axis
+    const x = candles.map((c: any) => {
+      const date = new Date(c.time);
+      // Simple formatting logic
+      if (selectedTimeframe.includes('m') || selectedTimeframe.includes('h')) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
+      } else {
+        return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: '2-digit' });
+      }
+    });
+
     const open = candles.map((c: any) => c.open);
     const high = candles.map((c: any) => c.high);
     const low = candles.map((c: any) => c.low);
@@ -240,7 +270,21 @@ export default function Dashboard() {
     };
 
     // Pivot Points
-    const pivotX = pivotPoints.map((p: any) => p.time);
+    // Need to map pivot times to our formatted x-axis categories
+    // This is tricky with category axis because exact matching is required.
+    // A better approach for category axis is to use the index as x, and use tickvals/ticktext.
+    // But for simplicity, let's try to format pivot times same as candles.
+
+    const formatTime = (timeStr: string) => {
+      const date = new Date(timeStr);
+      if (selectedTimeframe.includes('m') || selectedTimeframe.includes('h')) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
+      } else {
+        return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: '2-digit' });
+      }
+    };
+
+    const pivotX = pivotPoints.map((p: any) => formatTime(p.time));
     const pivotY = pivotPoints.map((p: any) => p.price);
     const trace2 = {
       x: pivotX,
@@ -263,7 +307,7 @@ export default function Dashboard() {
     const sellSignals = breakSignals.filter((s: any) => s.type === 'sell');
 
     const trace3 = {
-      x: buySignals.map((s: any) => s.time),
+      x: buySignals.map((s: any) => formatTime(s.time)),
       y: buySignals.map((s: any) => s.price),
       type: 'scatter',
       mode: 'markers',
@@ -274,7 +318,7 @@ export default function Dashboard() {
     };
 
     const trace4 = {
-      x: sellSignals.map((s: any) => s.time),
+      x: sellSignals.map((s: any) => formatTime(s.time)),
       y: sellSignals.map((s: any) => s.price),
       type: 'scatter',
       mode: 'markers',
@@ -309,14 +353,20 @@ export default function Dashboard() {
     });
 
     // FVG Zones as rectangles
+    // Need raw times to find indices
+    const rawX = candles.map((c: any) => c.time);
+
     fvgZones.forEach((zone: any) => {
       const color = zone.type === 'bullish' ? 'rgba(0, 255, 0, 0.15)' : 'rgba(255, 0, 0, 0.15)';
-      const timeIndex = x.indexOf(zone.time);
+      // Find index using raw time
+      const timeIndex = rawX.indexOf(zone.time);
+
       if (timeIndex >= 0) {
         shapes.push({
           type: 'rect',
           xref: 'x',
           yref: 'y',
+          // Use formatted x values for coordinates
           x0: x[timeIndex],
           x1: x[Math.min(timeIndex + 30, x.length - 1)],
           y0: zone.start,
@@ -344,10 +394,13 @@ export default function Dashboard() {
         font: { color: '#848e9c' }
       },
       xaxis: {
+        type: 'category',
         rangeslider: { visible: false },
         gridcolor: '#2a2e39',
         color: '#848e9c',
-        linecolor: '#2a2e39'
+        linecolor: '#2a2e39',
+        nticks: 10, // Limit number of ticks to prevent overcrowding
+        tickangle: -45 // Angle ticks for better readability
       },
       yaxis: {
         gridcolor: '#2a2e39',
@@ -397,6 +450,13 @@ export default function Dashboard() {
         <header className="dashboard-header">
           <h1>📊 XAU/USD Candlestick Chart</h1>
           <div className="symbol-selector">
+            <button
+              className="refresh-btn"
+              onClick={() => fetchCandleData()}
+              title="Refresh Data"
+            >
+              🔄 Refresh
+            </button>
             <select
               value={selectedSymbol}
               onChange={(e) => {

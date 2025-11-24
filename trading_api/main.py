@@ -13,6 +13,7 @@ from key_levels import identify_pivot_points, identify_key_levels, get_pivot_pos
 from fvg_detection import detect_fvg, fill_key_levels, detect_break_signal, get_fvg_zones, get_break_signals
 from journal_manager import JournalManager, JournalEntry
 from checklist_manager import ChecklistManager
+from news_manager import NewsManager
 
 from fastapi.middleware.cors import CORSMiddleware
 from reference_api import router as reference_router
@@ -229,7 +230,7 @@ data_manager = None
 
 @app.on_event("startup")
 async def startup_event():
-    global data_manager, journal_manager, checklist_manager
+    global data_manager, journal_manager, checklist_manager, news_manager
     
     # Determine symbol from config
     symbol = "XAUUSD" if Config.DATA_SOURCE == "MT5" else "GC=F"
@@ -243,6 +244,9 @@ async def startup_event():
     
     # Initialize Checklist Manager
     checklist_manager = ChecklistManager()
+
+    # Initialize News Manager
+    news_manager = NewsManager()
     
     print("[OK] All managers initialized successfully")
     
@@ -508,6 +512,31 @@ def create_news(news: NewsCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/news/search", tags=["News"])
+def search_news(
+    keyword: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    sentiment: Optional[str] = None,
+    source: Optional[str] = None,
+    tags: Optional[str] = None,  # Comma-separated tags
+    limit: int = Query(default=100, le=500)
+):
+    """Search news with various filters"""
+    try:
+        tag_list = tags.split(',') if tags else None
+        return news_manager.search_news(
+            keyword=keyword,
+            date_from=date_from,
+            date_to=date_to,
+            sentiment=sentiment,
+            source=source,
+            tags=tag_list,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/news/{news_id}", tags=["News"])
 def get_news(news_id: int):
     """Get a single news entry by ID"""
@@ -555,30 +584,7 @@ def delete_news(news_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/news/search", tags=["News"])
-def search_news(
-    keyword: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    sentiment: Optional[str] = None,
-    source: Optional[str] = None,
-    tags: Optional[str] = None,  # Comma-separated tags
-    limit: int = Query(default=100, le=500)
-):
-    """Search news with various filters"""
-    try:
-        tag_list = tags.split(',') if tags else None
-        return news_manager.search_news(
-            keyword=keyword,
-            date_from=date_from,
-            date_to=date_to,
-            sentiment=sentiment,
-            source=source,
-            tags=tag_list,
-            limit=limit
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 

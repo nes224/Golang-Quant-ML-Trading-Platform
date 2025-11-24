@@ -111,13 +111,21 @@ def calculate_multi_tf_trend(symbol: str = "GC=F") -> Dict[str, Dict]:
     from data_loader import fetch_data
     from analysis import calculate_indicators
     
-    timeframes = ['15m', '30m', '1h', '4h', '1d']
+    timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
     results = {}
     
     for tf in timeframes:
         try:
             # Fetch data
-            period = "1mo" if tf in ['15m', '30m'] else "3mo" if tf == '1h' else "6mo"
+            if tf in ['1m', '5m']:
+                period = "5d"
+            elif tf in ['15m', '30m']:
+                period = "1mo"
+            elif tf == '1h':
+                period = "3mo"
+            else:
+                period = "6mo"
+                
             df = fetch_data(symbol=symbol, period=period, interval=tf, use_cache=True)
             
             if df is None or len(df) < 100:
