@@ -107,11 +107,79 @@ const MarketSessions = () => {
   );
 };
 
+// DXY Widget Component
+const DXYWidget = ({ dxyData }: { dxyData: any }) => {
+  if (!dxyData) return null;
+
+  const { price, change_pct, correlation, alert } = dxyData;
+  const isPositive = change_pct >= 0;
+  const correlationColor = correlation < -0.5 ? '#0ecb81' : (correlation > 0.5 ? '#f6465d' : '#848e9c');
+  const correlationText = correlation < -0.5 ? 'Strong Inverse' : (correlation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
+
+  return (
+    <div className="dxy-widget">
+      <div className="dxy-header">
+        <h3>💵 Dollar Index (DXY)</h3>
+        {alert && <span className="dxy-alert-badge">⚠️ {alert.message}</span>}
+      </div>
+      <div className="dxy-content">
+        <div className="dxy-price-box">
+          <span className="dxy-price">{price.toFixed(3)}</span>
+          <span className={`dxy-change ${isPositive ? 'positive' : 'negative'}`}>
+            {isPositive ? '+' : ''}{change_pct.toFixed(2)}%
+          </span>
+        </div>
+        <div className="dxy-correlation">
+          <span className="label">Gold Correlation (20):</span>
+          <span className="value" style={{ color: correlationColor }}>
+            {correlation.toFixed(2)} ({correlationText})
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// US10Y Widget Component
+const US10YWidget = ({ us10yData }: { us10yData: any }) => {
+  if (!us10yData) return null;
+
+  const { price, change_pct, correlation, alert } = us10yData;
+  const isPositive = change_pct >= 0;
+  const correlationColor = correlation < -0.5 ? '#0ecb81' : (correlation > 0.5 ? '#f6465d' : '#848e9c');
+  const correlationText = correlation < -0.5 ? 'Strong Inverse' : (correlation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
+
+  return (
+    <div className="dxy-widget">
+      <div className="dxy-header">
+        <h3>🇺🇸 US 10Y Yield</h3>
+        {alert && <span className="dxy-alert-badge">⚠️ {alert.message}</span>}
+      </div>
+      <div className="dxy-content">
+        <div className="dxy-price-box">
+          <span className="dxy-price">{price.toFixed(3)}%</span>
+          <span className={`dxy-change ${isPositive ? 'positive' : 'negative'}`}>
+            {isPositive ? '+' : ''}{change_pct.toFixed(2)}%
+          </span>
+        </div>
+        <div className="dxy-correlation">
+          <span className="label">Gold Correlation (20):</span>
+          <span className="value" style={{ color: correlationColor }}>
+            {correlation.toFixed(2)} ({correlationText})
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const [candleData, setCandleData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
   const [selectedSymbol, setSelectedSymbol] = useState('GC=F');
+  const [dxyData, setDxyData] = useState<any>(null);
+  const [us10yData, setUs10yData] = useState<any>(null);
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Load Plotly from CDN
@@ -147,6 +215,41 @@ export default function Dashboard() {
   useEffect(() => {
     fetchCandleData();
   }, [selectedTimeframe, selectedSymbol]);
+
+  // Fetch DXY data
+  const fetchDXYData = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/dxy');
+      const data = await response.json();
+      setDxyData(data);
+    } catch (error) {
+      console.error('Error fetching DXY data:', error);
+    }
+  };
+
+  // Fetch US10Y data
+  const fetchUS10YData = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/us10y');
+      const data = await response.json();
+      setUs10yData(data);
+    } catch (error) {
+      console.error('Error fetching US10Y data:', error);
+    }
+  };
+
+  // Fetch DXY and US10Y on mount and periodically
+  useEffect(() => {
+    fetchDXYData();
+    fetchUS10YData();
+
+    const interval = setInterval(() => {
+      fetchDXYData();
+      fetchUS10YData();
+    }, 60000); // Update every 60 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   // WebSocket Connection
   const wsRef = useRef<WebSocket | null>(null);
@@ -415,6 +518,12 @@ export default function Dashboard() {
         </header>
 
         <MarketSessions />
+
+        {/* DXY and US10Y Widgets */}
+        <div className="correlation-widgets">
+          <DXYWidget dxyData={dxyData} />
+          <US10YWidget us10yData={us10yData} />
+        </div>
 
         <div className="timeframe-selector" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px' }}>

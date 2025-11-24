@@ -466,3 +466,118 @@ body {
   left: 10px !important;
   right: auto !important;
 }
+
+/* DXY Widget */
+.dxy-widget {
+  background-color: #151a21;
+  border-radius: 12px;
+  border: 1px solid #2a2e39;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.dxy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.dxy-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e0e3eb;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dxy-alert-badge {
+  background-color: rgba(246, 70, 93, 0.15);
+  color: #f6465d;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid rgba(246, 70, 93, 0.3);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+.dxy-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dxy-price-box {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.dxy-price {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  font-family: 'Roboto Mono', monospace;
+  line-height: 1;
+}
+
+.dxy-change {
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.dxy-change.positive {
+  color: #0ecb81;
+  background-color: rgba(14, 203, 129, 0.1);
+}
+
+.dxy-change.negative {
+  color: #f6465d;
+  background-color: rgba(246, 70, 93, 0.1);
+}
+
+.dxy-correlation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  padding-top: 16px;
+  border-top: 1px solid #2a2e39;
+}
+
+.dxy-correlation .label {
+  color: #848e9c;
+}
+
+.dxy-correlation .value {
+  font-weight: 600;
+}
+
+/* Responsive adjustments for analysis grid */
+@media (max-width: 1024px) {
+  .analysis-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

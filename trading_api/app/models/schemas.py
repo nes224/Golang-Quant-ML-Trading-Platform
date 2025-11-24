@@ -25,6 +25,7 @@ class NewsCreate(BaseModel):
     title: str
     content: str
     url: Optional[str] = None
+    type: Optional[str] = None  # New field for news category
     ai_analysis: Optional[str] = None
     sentiment: Optional[str] = None
     impact_score: Optional[int] = None
@@ -37,6 +38,7 @@ class NewsUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     url: Optional[str] = None
+    type: Optional[str] = None  # New field for news category
     ai_analysis: Optional[str] = None
     sentiment: Optional[str] = None
     impact_score: Optional[int] = None

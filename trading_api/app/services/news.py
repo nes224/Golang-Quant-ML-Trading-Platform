@@ -20,6 +20,7 @@ class NewsManager:
         conn = db.get_connection()
         try:
             with conn.cursor() as cur:
+                # Create table if not exists
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS news_analysis (
                         id SERIAL PRIMARY KEY,
@@ -29,6 +30,7 @@ class NewsManager:
                         title TEXT NOT NULL,
                         content TEXT NOT NULL,
                         url TEXT,
+                        type VARCHAR(50),
                         ai_analysis TEXT,
                         sentiment VARCHAR(50),
                         impact_score INTEGER,
@@ -38,10 +40,21 @@ class NewsManager:
                     )
                 """)
                 
+                # Check if 'type' column exists (for migration)
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='news_analysis' AND column_name='type'
+                """)
+                if not cur.fetchone():
+                    print("Migrating news_analysis table: Adding 'type' column...")
+                    cur.execute("ALTER TABLE news_analysis ADD COLUMN type VARCHAR(50)")
+                
                 # Create index for faster search
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_news_date ON news_analysis(date DESC);
                     CREATE INDEX IF NOT EXISTS idx_news_sentiment ON news_analysis(sentiment);
+                    CREATE INDEX IF NOT EXISTS idx_news_type ON news_analysis(type);
                 """)
                 
                 conn.commit()
@@ -54,31 +67,14 @@ class NewsManager:
     def create_news(self, news_data: dict) -> dict:
         """
         Create a new news entry.
-        
-        Args:
-            news_data: {
-                'date': '2025-11-23',
-                'time': '10:00',
-                'source': 'Reuters',
-                'title': 'News title',
-                'content': 'Full news content',
-                'url': 'https://...',
-                'ai_analysis': 'AI analysis result (optional)',
-                'sentiment': 'POSITIVE/NEGATIVE/NEUTRAL (optional)',
-                'impact_score': 1-10 (optional),
-                'tags': ['gold', 'fed', 'inflation']
-            }
-        
-        Returns:
-            Created news entry with ID
         """
         conn = db.get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO news_analysis 
-                    (date, time, source, title, content, url, ai_analysis, sentiment, impact_score, tags)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (date, time, source, title, content, url, type, ai_analysis, sentiment, impact_score, tags)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, created_at
                 """, (
                     news_data.get('date'),
@@ -87,6 +83,7 @@ class NewsManager:
                     news_data.get('title'),
                     news_data.get('content'),
                     news_data.get('url'),
+                    news_data.get('type'),
                     news_data.get('ai_analysis'),
                     news_data.get('sentiment'),
                     news_data.get('impact_score'),
@@ -113,7 +110,7 @@ class NewsManager:
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT id, date, time, source, title, content, url, 
+                    SELECT id, date, time, source, title, content, url, type,
                            ai_analysis, sentiment, impact_score, tags,
                            created_at, updated_at
                     FROM news_analysis
@@ -132,12 +129,13 @@ class NewsManager:
                     'title': row[4],
                     'content': row[5],
                     'url': row[6],
-                    'ai_analysis': row[7],
-                    'sentiment': row[8],
-                    'impact_score': row[9],
-                    'tags': row[10] or [],
-                    'created_at': str(row[11]),
-                    'updated_at': str(row[12])
+                    'type': row[7],
+                    'ai_analysis': row[8],
+                    'sentiment': row[9],
+                    'impact_score': row[10],
+                    'tags': row[11] or [],
+                    'created_at': str(row[12]),
+                    'updated_at': str(row[13])
                 }
         finally:
             db.return_connection(conn)
@@ -148,7 +146,7 @@ class NewsManager:
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT id, date, time, source, title, content, url,
+                    SELECT id, date, time, source, title, content, url, type,
                            ai_analysis, sentiment, impact_score, tags,
                            created_at, updated_at
                     FROM news_analysis
@@ -165,12 +163,13 @@ class NewsManager:
                     'title': row[4],
                     'content': row[5],
                     'url': row[6],
-                    'ai_analysis': row[7],
-                    'sentiment': row[8],
-                    'impact_score': row[9],
-                    'tags': row[10] or [],
-                    'created_at': str(row[11]),
-                    'updated_at': str(row[12])
+                    'type': row[7],
+                    'ai_analysis': row[8],
+                    'sentiment': row[9],
+                    'impact_score': row[10],
+                    'tags': row[11] or [],
+                    'created_at': str(row[12]),
+                    'updated_at': str(row[13])
                 } for row in rows]
         finally:
             db.return_connection(conn)
@@ -178,10 +177,6 @@ class NewsManager:
     def update_news(self, news_id: int, updates: dict) -> dict:
         """
         Update a news entry.
-        
-        Args:
-            news_id: ID of news to update
-            updates: Dictionary of fields to update
         """
         conn = db.get_connection()
         try:
@@ -189,7 +184,7 @@ class NewsManager:
             set_clauses = []
             values = []
             
-            allowed_fields = ['date', 'time', 'source', 'title', 'content', 'url',
+            allowed_fields = ['date', 'time', 'source', 'title', 'content', 'url', 'type',
                             'ai_analysis', 'sentiment', 'impact_score', 'tags']
             
             for field in allowed_fields:
@@ -231,19 +226,11 @@ class NewsManager:
                    date_to: Optional[str] = None,
                    sentiment: Optional[str] = None,
                    source: Optional[str] = None,
+                   news_type: Optional[str] = None,
                    tags: Optional[List[str]] = None,
                    limit: int = 100) -> List[dict]:
         """
         Search news with various filters.
-        
-        Args:
-            keyword: Search in title and content
-            date_from: Start date (YYYY-MM-DD)
-            date_to: End date (YYYY-MM-DD)
-            sentiment: POSITIVE/NEGATIVE/NEUTRAL
-            source: News source
-            tags: List of tags to filter
-            limit: Maximum results
         """
         conn = db.get_connection()
         try:
@@ -269,6 +256,10 @@ class NewsManager:
             if source:
                 conditions.append("source ILIKE %s")
                 values.append(f"%{source}%")
+                
+            if news_type:
+                conditions.append("type = %s")
+                values.append(news_type)
             
             if tags:
                 conditions.append("tags && %s")
@@ -279,7 +270,7 @@ class NewsManager:
             
             with conn.cursor() as cur:
                 query = f"""
-                    SELECT id, date, time, source, title, content, url,
+                    SELECT id, date, time, source, title, content, url, type,
                            ai_analysis, sentiment, impact_score, tags,
                            created_at, updated_at
                     FROM news_analysis
@@ -298,12 +289,13 @@ class NewsManager:
                     'title': row[4],
                     'content': row[5],
                     'url': row[6],
-                    'ai_analysis': row[7],
-                    'sentiment': row[8],
-                    'impact_score': row[9],
-                    'tags': row[10] or [],
-                    'created_at': str(row[11]),
-                    'updated_at': str(row[12])
+                    'type': row[7],
+                    'ai_analysis': row[8],
+                    'sentiment': row[9],
+                    'impact_score': row[10],
+                    'tags': row[11] or [],
+                    'created_at': str(row[12]),
+                    'updated_at': str(row[13])
                 } for row in rows]
         finally:
             db.return_connection(conn)

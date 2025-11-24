@@ -12,6 +12,7 @@ interface News {
     title: string;
     content: string;
     url?: string;
+    type?: string;
     ai_analysis?: string;
     sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
     impact_score?: number;
@@ -27,6 +28,7 @@ export default function NewsPage() {
     const [keyword, setKeyword] = useState('');
     const [sentimentFilter, setSentimentFilter] = useState('');
     const [sourceFilter, setSourceFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState('');
 
     // Form State
     const [formData, setFormData] = useState({
@@ -36,11 +38,22 @@ export default function NewsPage() {
         title: '',
         content: '',
         url: '',
+        type: '',
         tags: '',
         ai_analysis: '',
         sentiment: '',
         impact_score: ''
     });
+
+    const newsTypes = [
+        "ภาษีศุลกากร",
+        "สงครามการค้า",
+        "สงคราม",
+        "Fed",
+        "เศรษฐกิจ",
+        "การเมือง",
+        "อื่นๆ"
+    ];
 
     useEffect(() => {
         fetchNews();
@@ -54,6 +67,7 @@ export default function NewsPage() {
             if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
             if (sentimentFilter) url += `&sentiment=${sentimentFilter}`;
             if (sourceFilter) url += `&source=${encodeURIComponent(sourceFilter)}`;
+            if (typeFilter) url += `&news_type=${encodeURIComponent(typeFilter)}`;
 
             const response = await fetch(url);
             const data = await response.json();
@@ -95,6 +109,7 @@ export default function NewsPage() {
                     title: '',
                     content: '',
                     url: '',
+                    type: '',
                     tags: '',
                     ai_analysis: '',
                     sentiment: '',
@@ -140,6 +155,19 @@ export default function NewsPage() {
                         />
                     </div>
                     <div className="filter-group">
+                        <label>Type</label>
+                        <select
+                            className="filter-select"
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value)}
+                        >
+                            <option value="">All Types</option>
+                            {newsTypes.map(t => (
+                                <option key={t} value={t}>{t}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="filter-group">
                         <label>Sentiment</label>
                         <select
                             className="filter-select"
@@ -176,6 +204,7 @@ export default function NewsPage() {
                             <div key={news.id} className="news-card">
                                 <div className="news-meta">
                                     <span className="news-date">{news.date} {news.time}</span>
+                                    {news.type && <span className="news-type-badge">{news.type}</span>}
                                     {news.source && <span className="news-source">{news.source}</span>}
                                 </div>
                                 <h3 className="news-title">{news.title}</h3>
@@ -243,15 +272,30 @@ export default function NewsPage() {
                                     </div>
                                 </div>
 
-                                <div className="form-group">
-                                    <label>Source</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="e.g. Bloomberg, Reuters"
-                                        value={formData.source}
-                                        onChange={e => setFormData({ ...formData, source: e.target.value })}
-                                    />
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Type</label>
+                                        <select
+                                            className="form-select"
+                                            value={formData.type}
+                                            onChange={e => setFormData({ ...formData, type: e.target.value })}
+                                        >
+                                            <option value="">Select Type</option>
+                                            {newsTypes.map(t => (
+                                                <option key={t} value={t}>{t}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Source</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="e.g. Bloomberg"
+                                            value={formData.source}
+                                            onChange={e => setFormData({ ...formData, source: e.target.value })}
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="form-group">

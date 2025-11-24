@@ -399,15 +399,18 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
     # 2. Fetch from Source
     new_df = None
     try:
-        if Config.DATA_SOURCE == "MT5":
+        # Force Yahoo for Indices that are not available/reliable on other sources
+        force_yahoo = symbol in ["DX=F", "DX-Y.NYB", "^TNX", "^DXY"]
+        
+        if Config.DATA_SOURCE == "MT5" and not force_yahoo:
             # MT5 Logic (Simplified for now - usually fetches latest N bars)
             mt5_symbol = "XAUUSD" if symbol == "GC=F" else symbol
             new_df = fetch_data_mt5(mt5_symbol, period, interval)
-        elif Config.DATA_SOURCE == "FINNHUB":
+        elif Config.DATA_SOURCE == "FINNHUB" and not force_yahoo:
             # Finnhub Logic
             finnhub_symbol = "OANDA:XAU_USD" if symbol == "GC=F" else symbol
             new_df = fetch_data_finnhub(finnhub_symbol, period, interval)
-        elif Config.DATA_SOURCE == "TWELVE":
+        elif Config.DATA_SOURCE == "TWELVE" and not force_yahoo:
             # Twelve Data Logic
             twelve_symbol = "XAU/USD" if symbol == "GC=F" else symbol
             new_df = fetch_data_twelve(twelve_symbol, period, interval)
