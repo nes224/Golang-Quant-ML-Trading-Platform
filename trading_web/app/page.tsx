@@ -112,6 +112,7 @@ const DXYWidget = ({ dxyData }: { dxyData: any }) => {
   if (!dxyData || dxyData.error) return null;
 
   const price = dxyData.price || 0;
+  console.log("dxy::", price);
   const change_pct = dxyData.change_pct || 0;
   const correlation = dxyData.correlation || 0;
   const alert = dxyData.alert;
@@ -149,6 +150,7 @@ const US10YWidget = ({ us10yData }: { us10yData: any }) => {
   if (!us10yData || us10yData.error) return null;
 
   const price = us10yData.price || 0;
+  console.log("us10y::", price)
   const change_pct = us10yData.change_pct || 0;
   const correlation = us10yData.correlation || 0;
   const alert = us10yData.alert;
