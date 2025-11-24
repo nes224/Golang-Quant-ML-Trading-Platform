@@ -151,63 +151,6 @@ export default function Dashboard() {
   // WebSocket Connection
   const wsRef = useRef<WebSocket | null>(null);
 
-  useEffect(() => {
-    // Function to connect WebSocket
-    const connectWebSocket = () => {
-      // Close existing connection if any
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-
-      const ws = new WebSocket('ws://localhost:8000/ws');
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('Connected to WebSocket');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (data.type === 'candle_update' && data.timeframe === selectedTimeframe) {
-            // Only update if the timestamp is newer or same (live update)
-            setCandleData((prevData: any) => {
-              // If we have previous data, we might want to merge or just replace
-              // For now, replacing is safer to ensure consistency with backend analysis
-              return data;
-            });
-          }
-        } catch (error) {
-          console.error('WebSocket message parsing error:', error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      ws.onclose = () => {
-        console.log('WebSocket disconnected, retrying in 3s...');
-        // Simple reconnect logic
-        setTimeout(() => {
-          if (wsRef.current === ws) { // Only reconnect if this is still the active connection
-            connectWebSocket();
-          }
-        }, 3000);
-      };
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [selectedTimeframe]); // Re-connect when timeframe changes to ensure clean state
-
   // Render chart when data changes
   useEffect(() => {
     if (candleData && candleData.candles && chartRef.current && typeof Plotly !== 'undefined') {
