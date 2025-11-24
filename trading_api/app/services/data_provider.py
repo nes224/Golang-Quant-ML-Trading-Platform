@@ -38,12 +38,21 @@ def fetch_data_yahoo(symbol="GC=F", period="2mo", interval="1d"):
             period = "1mo" 
             
     try:
-        df = yf.download(symbol, period=period, interval=fetch_interval, progress=False, auto_adjust=True)
+        # Disable threads to avoid potential race conditions with multiple symbols
+        df = yf.download(symbol, period=period, interval=fetch_interval, progress=False, auto_adjust=True, threads=False)
         if df.empty:
             return None
         # Ensure columns are flat if multi-index (yfinance update)
         if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+            # Check if 'Ticker' level exists and try to drop it properly
+            try:
+                df = df.xs(symbol, axis=1, level=1, drop_level=True)
+            except:
+                # Fallback: just take level 0
+                df.columns = df.columns.get_level_values(0)
+        
+        # Remove duplicate columns if any (keep the first one) to prevent "multiple columns" error
+        df = df.loc[:, ~df.columns.duplicated()]
             
         # Resample if needed
         if target_interval == "4h":
@@ -383,6 +392,10 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
     last_timestamp = None
     
     # 1. Try to get from cache
+    # Force disable cache for DXY and US10Y to prevent data mixing issues
+    if symbol in ["DX=F", "DX-Y.NYB", "^TNX", "^DXY"]:
+        use_cache = False
+
     if use_cache:
         try:
             from app.core.database import db
@@ -471,7 +484,8 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
     
     if new_df is not None and not new_df.empty:
         # Cache the NEW data
-        if use_cache:
+        # Skip cache for DXY/US10Y
+        if use_cache and symbol not in ["DX=F", "DX-Y.NYB", "^TNX", "^DXY"]:
             try:
                 from app.core.database import db
                 

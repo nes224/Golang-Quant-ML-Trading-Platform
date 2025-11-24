@@ -11,6 +11,8 @@ from app.services.analysis.fvg import detect_fvg, fill_key_levels, detect_break_
 from app.services.websocket_manager import manager
 
 async def broadcast_market_data():
+    print("Starting Market Stream Service...")
+    
     # Import MT5 only if needed and available
     if Config.DATA_SOURCE == "MT5":
         try:
@@ -25,8 +27,8 @@ async def broadcast_market_data():
     
     last_price = None
     symbol = "XAUUSD" if Config.DATA_SOURCE == "MT5" else "GC=F"
-    dxy_symbol = "DX=F"     # Dollar Index Futures (More reliable than DX-Y.NYB)
-    us10y_symbol = "^TNX"   # US 10-Year Treasury Yield
+    dxy_symbol = "DX-Y.NYB" # Dollar Index
+    us10y_symbol = "^TNX" # US 10Y Yield
     
     # Try to select symbol with fallback variations (MT5 only)
     if Config.DATA_SOURCE == "MT5":
@@ -65,7 +67,8 @@ async def broadcast_market_data():
             if current_time - external_data_last_update > 60:
                 # Fetch DXY
                 try:
-                    dxy_df = fetch_data(symbol=dxy_symbol, period="5d", interval="5m")
+                    # Use shorter period to avoid Yahoo errors
+                    dxy_df = fetch_data(symbol=dxy_symbol, period="1d", interval="5m")
                     if dxy_df is not None and not dxy_df.empty:
                         dxy_data_cache = dxy_df
                 except Exception as e:
@@ -73,7 +76,7 @@ async def broadcast_market_data():
                 
                 # Fetch US10Y
                 try:
-                    us10y_df = fetch_data(symbol=us10y_symbol, period="5d", interval="5m")
+                    us10y_df = fetch_data(symbol=us10y_symbol, period="1d", interval="5m")
                     if us10y_df is not None and not us10y_df.empty:
                         us10y_data_cache = us10y_df
                 except Exception as e:
@@ -125,7 +128,7 @@ async def broadcast_market_data():
                         
                         if tf == "5m":
                             # DXY Analysis
-                            if dxy_data_cache is not None and not dxy_data_cache.empty:
+                            if dxy_data_cache is not None and not dxy_data_cache.empty and len(dxy_data_cache) > 1:
                                 try:
                                     gold_close = df['Close']
                                     dxy_close = dxy_data_cache['Close']
@@ -150,7 +153,7 @@ async def broadcast_market_data():
                                     print(f"Error in DXY analysis: {e}")
                             
                             # US10Y Analysis
-                            if us10y_data_cache is not None and not us10y_data_cache.empty:
+                            if us10y_data_cache is not None and not us10y_data_cache.empty and len(us10y_data_cache) > 1:
                                 try:
                                     gold_close = df['Close']
                                     us10y_close = us10y_data_cache['Close']

@@ -76,16 +76,13 @@ def detect_trend(df: pd.DataFrame, method: str = "ema") -> str:
 def get_dxy_analysis(timeframe: str = "1d") -> Dict:
     """
     Get DXY (US Dollar Index) analysis
-    
-    Args:
-        timeframe: Timeframe to analyze
-    
-    Returns:
-        Dictionary with DXY analysis
     """
     try:
-        # Fetch DXY data - Use UUP (Dollar ETF) for faster data
-        df = fetch_data("UUP", period="3mo", interval=timeframe)
+        # Use DX-Y.NYB for Yahoo (Intercontinental Exchange Index)
+        symbol = "DX-Y.NYB"
+        
+        # Fetch DXY data (Disable cache to ensure fresh data)
+        df = fetch_data(symbol, period="3mo", interval=timeframe, use_cache=False)
         
         if df is None or df.empty:
             return {
@@ -102,11 +99,11 @@ def get_dxy_analysis(timeframe: str = "1d") -> Dict:
         # Detect trend
         trend = detect_trend(df, method="ema")
         
-        # Get price and indicators
-        price = last_row['Close']
-        rsi = last_row.get('RSI', 0)
-        ema_50 = last_row.get('EMA_50', 0)
-        ema_200 = last_row.get('EMA_200', 0)
+        # Get price and indicators (Convert numpy types to native python)
+        price = float(last_row['Close'])
+        rsi = float(last_row.get('RSI', 0)) if not pd.isna(last_row.get('RSI')) else 0.0
+        ema_50 = float(last_row.get('EMA_50', 0)) if not pd.isna(last_row.get('EMA_50')) else 0.0
+        ema_200 = float(last_row.get('EMA_200', 0)) if not pd.isna(last_row.get('EMA_200')) else 0.0
         
         # Determine trend strength
         if trend == "UP":
@@ -136,18 +133,77 @@ def get_dxy_analysis(timeframe: str = "1d") -> Dict:
             "trend": "UNKNOWN"
         }
 
+def get_us10y_analysis(timeframe: str = "1d") -> Dict:
+    """
+    Get US10Y (US 10-Year Treasury Yield) analysis
+    """
+    try:
+        symbol = "^TNX" # Yahoo Finance symbol for 10Y Yield
+        
+        # Fetch data (Disable cache to ensure fresh data)
+        df = fetch_data(symbol, period="3mo", interval=timeframe, use_cache=False)
+        
+        if df is None or df.empty:
+            return {
+                "symbol": "US10Y",
+                "error": "Data not available",
+                "trend": "UNKNOWN"
+            }
+        
+        # Calculate indicators
+        df = calculate_indicators(df)
+        
+        last_row = df.iloc[-1]
+        
+        # Detect trend
+        trend = detect_trend(df, method="ema")
+        
+        # Get price and indicators
+        price = float(last_row['Close'])
+        rsi = float(last_row.get('RSI', 0)) if not pd.isna(last_row.get('RSI')) else 0.0
+        ema_50 = float(last_row.get('EMA_50', 0)) if not pd.isna(last_row.get('EMA_50')) else 0.0
+        ema_200 = float(last_row.get('EMA_200', 0)) if not pd.isna(last_row.get('EMA_200')) else 0.0
+        
+        # Determine trend strength
+        if trend == "UP":
+            strength = "Strong" if price > ema_50 > ema_200 else "Weak"
+        elif trend == "DOWN":
+            strength = "Strong" if price < ema_50 < ema_200 else "Weak"
+        else:
+            strength = "Ranging"
+            
+        interpretation = ""
+        if trend == "UP":
+            interpretation = "Yields rising - Bearish for Gold (Opportunity Cost)"
+        elif trend == "DOWN":
+            interpretation = "Yields falling - Bullish for Gold"
+        else:
+            interpretation = "Yields ranging - Neutral for Gold"
+        
+        return {
+            "symbol": "US10Y",
+            "timeframe": timeframe,
+            "price": round(price, 3),
+            "trend": trend,
+            "trend_strength": strength,
+            "rsi": round(rsi, 2),
+            "ema_50": round(ema_50, 3),
+            "ema_200": round(ema_200, 3),
+            "interpretation": interpretation
+        }
+        
+    except Exception as e:
+        print(f"Error fetching US10Y data: {e}")
+        return {
+            "symbol": "US10Y",
+            "error": str(e),
+            "trend": "UNKNOWN"
+        }
+
 
 def get_dxy_interpretation(trend: str, price: float, rsi: float) -> str:
     """
     Get interpretation of DXY trend for trading context
-    
-    Args:
-        trend: DXY trend (UP/DOWN/SIDEWAY)
-        price: Current DXY price
-        rsi: RSI value
-    
-    Returns:
-        Interpretation string
     """
     if trend == "UP":
         if rsi > 70:
@@ -166,9 +222,6 @@ def get_dxy_interpretation(trend: str, price: float, rsi: float) -> str:
 def get_all_reference_indicators() -> Dict:
     """
     Get all reference indicators (DXY, etc.)
-    
-    Returns:
-        Dictionary with all reference indicator data
     """
     indicators = {}
     
@@ -178,5 +231,9 @@ def get_all_reference_indicators() -> Dict:
         if tf not in indicators:
             indicators[tf] = {}
         indicators[tf]["DXY"] = dxy_data
+        
+        # Get US10Y
+        us10y_data = get_us10y_analysis(tf)
+        indicators[tf]["US10Y"] = us10y_data
     
     return indicators

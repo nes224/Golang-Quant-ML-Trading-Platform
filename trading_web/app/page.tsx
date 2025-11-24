@@ -109,9 +109,13 @@ const MarketSessions = () => {
 
 // DXY Widget Component
 const DXYWidget = ({ dxyData }: { dxyData: any }) => {
-  if (!dxyData) return null;
+  if (!dxyData || dxyData.error) return null;
 
-  const { price, change_pct, correlation, alert } = dxyData;
+  const price = dxyData.price || 0;
+  const change_pct = dxyData.change_pct || 0;
+  const correlation = dxyData.correlation || 0;
+  const alert = dxyData.alert;
+
   const isPositive = change_pct >= 0;
   const correlationColor = correlation < -0.5 ? '#0ecb81' : (correlation > 0.5 ? '#f6465d' : '#848e9c');
   const correlationText = correlation < -0.5 ? 'Strong Inverse' : (correlation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
@@ -124,15 +128,15 @@ const DXYWidget = ({ dxyData }: { dxyData: any }) => {
       </div>
       <div className="dxy-content">
         <div className="dxy-price-box">
-          <span className="dxy-price">{price.toFixed(3)}</span>
+          <span className="dxy-price">{price?.toFixed(3)}</span>
           <span className={`dxy-change ${isPositive ? 'positive' : 'negative'}`}>
-            {isPositive ? '+' : ''}{change_pct.toFixed(2)}%
+            {isPositive ? '+' : ''}{change_pct?.toFixed(2)}%
           </span>
         </div>
         <div className="dxy-correlation">
           <span className="label">Gold Correlation (20):</span>
           <span className="value" style={{ color: correlationColor }}>
-            {correlation.toFixed(2)} ({correlationText})
+            {correlation?.toFixed(2)} ({correlationText})
           </span>
         </div>
       </div>
@@ -142,9 +146,13 @@ const DXYWidget = ({ dxyData }: { dxyData: any }) => {
 
 // US10Y Widget Component
 const US10YWidget = ({ us10yData }: { us10yData: any }) => {
-  if (!us10yData) return null;
+  if (!us10yData || us10yData.error) return null;
 
-  const { price, change_pct, correlation, alert } = us10yData;
+  const price = us10yData.price || 0;
+  const change_pct = us10yData.change_pct || 0;
+  const correlation = us10yData.correlation || 0;
+  const alert = us10yData.alert;
+
   const isPositive = change_pct >= 0;
   const correlationColor = correlation < -0.5 ? '#0ecb81' : (correlation > 0.5 ? '#f6465d' : '#848e9c');
   const correlationText = correlation < -0.5 ? 'Strong Inverse' : (correlation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
@@ -157,15 +165,15 @@ const US10YWidget = ({ us10yData }: { us10yData: any }) => {
       </div>
       <div className="dxy-content">
         <div className="dxy-price-box">
-          <span className="dxy-price">{price.toFixed(3)}%</span>
+          <span className="dxy-price">{price?.toFixed(3)}%</span>
           <span className={`dxy-change ${isPositive ? 'positive' : 'negative'}`}>
-            {isPositive ? '+' : ''}{change_pct.toFixed(2)}%
+            {isPositive ? '+' : ''}{change_pct?.toFixed(2)}%
           </span>
         </div>
         <div className="dxy-correlation">
           <span className="label">Gold Correlation (20):</span>
           <span className="value" style={{ color: correlationColor }}>
-            {correlation.toFixed(2)} ({correlationText})
+            {correlation?.toFixed(2)} ({correlationText})
           </span>
         </div>
       </div>

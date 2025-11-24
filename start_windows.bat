@@ -14,7 +14,7 @@ set DATA_SOURCE=MT5
 
 echo.
 echo [1/2] Starting Python API (Port 8000)...
-start "NesHedgeFund API" cmd /k "cd /d %~dp0trading_api && "%PYTHON_PATH%" -m uvicorn main:app --reload --port 8000"
+start "NesHedgeFund API" cmd /k "cd /d %~dp0trading_api && python run.py || pause"
 
 timeout /t 3
 
