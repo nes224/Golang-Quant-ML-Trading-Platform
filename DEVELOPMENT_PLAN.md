@@ -96,7 +96,45 @@
 
 ## 🎯 Future Development Plan (Phase 2)
 
-### Priority 1: Enhanced Analytics
+### Priority 1: Historical Data Management
+- [ ] **Historical Price Data Fetching**
+  - [ ] **Backend Implementation**
+    - Extend `data_provider.py` to support date range queries
+    - Add `start_date` and `end_date` parameters to fetch functions
+    - Implement data validation and gap detection
+    - Add caching layer for historical data (PostgreSQL)
+    - Support multiple timeframes (1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M)
+  
+  - [ ] **API Endpoints**
+    - `GET /candlestick/{timeframe}/history` - Fetch historical data
+      - Query params: `symbol`, `start_date`, `end_date`, `limit`
+    - `GET /candlestick/{timeframe}/range` - Get data for specific date range
+    - `POST /candlestick/bulk-fetch` - Batch fetch for multiple symbols/timeframes
+  
+  - [ ] **Database Schema**
+    - Create `historical_candles` table with indexes on (symbol, timeframe, timestamp)
+    - Implement data deduplication logic
+    - Add metadata tracking (last_fetch_date, data_quality_score)
+  
+  - [ ] **Frontend Features**
+    - Date range picker component
+    - Historical data loader with progress indicator
+    - Chart navigation controls (zoom, pan, date jump)
+    - "Load More" button for infinite scroll
+    - Export historical data to CSV/JSON
+  
+  - [ ] **Data Sources**
+    - Yahoo Finance: Up to 730 days for daily, limited for intraday
+    - Twelve Data: Extended historical data (paid tier)
+    - Fallback mechanism when data unavailable
+  
+  - [ ] **Performance Optimization**
+    - Lazy loading for large datasets
+    - Data compression for storage
+    - Incremental fetch (only missing gaps)
+    - Background job for periodic historical data sync
+
+### Priority 2: Enhanced Analytics
 - [ ] **Performance Dashboard**
   - Monthly/Yearly P&L summary
   - Win rate trends over time
