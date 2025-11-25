@@ -314,6 +314,144 @@ class NewsManager:
             raise Exception(f"Failed to delete news: {e}")
         finally:
             db.return_connection(conn)
-
+    def calculate_market_sentiment(self, days: int = 3) -> dict:
+        """
+        Calculate market sentiment specifically for GOLD (XAU/USD).
+        
+        Logic:
+        1. USD/Economy/Fed News (Inverse Correlation):
+           - Positive News -> Bearish for Gold (-1)
+           - Negative News -> Bullish for Gold (+1)
+           
+        2. Gold/Mining News (Direct Correlation):
+           - Positive News -> Bullish for Gold (+1)
+           - Negative News -> Bearish for Gold (-1)
+           
+        3. Geopolitics/Crisis (Safe Haven):
+           - Negative News (Bad event) -> Bullish for Gold (+1)
+           - Positive News (Resolution) -> Bearish for Gold (-1)
+        
+        Returns:
+            dict: {
+                "score": float (-10 to 10),
+                "label": str (e.g. "Strong Bullish"),
+                "total_news": int,
+                "breakdown": dict
+            }
+        """
+        conn = db.get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Fetch news from last N days
+                cur.execute("""
+                    SELECT sentiment, impact_score, title, content, tags
+                    FROM news_analysis
+                    WHERE date >= CURRENT_DATE - INTERVAL '%s days'
+                    AND sentiment IS NOT NULL
+                    AND impact_score IS NOT NULL
+                """, (days,))
+                
+                rows = cur.fetchall()
+                
+                if not rows:
+                    return {
+                        "score": 0,
+                        "label": "Neutral",
+                        "total_news": 0,
+                        "breakdown": {"bullish": 0, "bearish": 0, "neutral": 0}
+                    }
+                
+                total_score = 0
+                total_impact = 0
+                breakdown = {"bullish": 0, "bearish": 0, "neutral": 0}
+                
+                # Keywords for classification
+                usd_keywords = ['usd', 'dollar', 'fed', 'federal reserve', 'rate', 'yield', 'economy', 'jobs', 'cpi', 'inflation', 'gdp']
+                gold_keywords = ['gold', 'xau', 'bullion', 'metal', 'mining']
+                risk_keywords = ['war', 'conflict', 'geopolitics', 'tension', 'crisis', 'attack', 'trade', 'tariff', 'sanction', 'china', 'us-china']
+                
+                for row in rows:
+                    sentiment = row[0].upper()
+                    impact = row[1] or 1
+                    text = (row[2] + " " + row[3]).lower() # Title + Content
+                    tags = [t.lower() for t in (row[4] or [])]
+                    
+                    # Determine correlation type
+                    is_usd_news = any(k in text for k in usd_keywords) or any(k in tags for k in usd_keywords)
+                    is_gold_news = any(k in text for k in gold_keywords) or any(k in tags for k in gold_keywords)
+                    is_risk_news = any(k in text for k in risk_keywords) or any(k in tags for k in risk_keywords)
+                    
+                    # Calculate Gold Score
+                    gold_score = 0
+                    
+                    if sentiment == "POSITIVE":
+                        if is_gold_news:
+                            gold_score = 1 # Good for Gold
+                        elif is_usd_news:
+                            gold_score = -1 # Good for USD = Bad for Gold
+                        elif is_risk_news:
+                            gold_score = -1 # Tension easing = Bad for Safe Haven
+                        else:
+                            gold_score = 1 # Default general positive sentiment (risk-on can be mixed, but let's assume slight bullish or neutral)
+                            
+                    elif sentiment == "NEGATIVE":
+                        if is_gold_news:
+                            gold_score = -1 # Bad for Gold
+                        elif is_usd_news:
+                            gold_score = 1 # Bad for USD = Good for Gold
+                        elif is_risk_news:
+                            gold_score = 1 # Crisis/War = Good for Gold (Safe Haven)
+                        else:
+                            gold_score = -1 # General negative sentiment
+                            
+                    else: # NEUTRAL
+                        gold_score = 0
+                    
+                    # Update breakdown
+                    if gold_score > 0:
+                        breakdown["bullish"] += 1
+                    elif gold_score < 0:
+                        breakdown["bearish"] += 1
+                    else:
+                        breakdown["neutral"] += 1
+                    
+                    # Weighted score
+                    total_score += gold_score * impact
+                    total_impact += impact
+                
+                # Calculate final score (-1 to 1)
+                raw_score = total_score / total_impact if total_impact > 0 else 0
+                
+                # Scale to -10 to 10
+                scaled_score = raw_score * 10
+                
+                # Determine label
+                if scaled_score >= 5:
+                    label = "Strong Bullish"
+                elif scaled_score >= 2:
+                    label = "Bullish"
+                elif scaled_score <= -5:
+                    label = "Strong Bearish"
+                elif scaled_score <= -2:
+                    label = "Bearish"
+                else:
+                    label = "Neutral"
+                    
+                return {
+                    "score": round(scaled_score, 2),
+                    "label": label,
+                    "total_news": len(rows),
+                    "breakdown": breakdown
+                }
+                
+        except Exception as e:
+            print(f"Error calculating sentiment: {e}")
+            return {
+                "score": 0,
+                "label": "Error",
+                "error": str(e)
+            }
+        finally:
+            db.return_connection(conn)
 # Global instance
 news_manager = NewsManager()

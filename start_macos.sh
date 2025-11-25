@@ -15,7 +15,7 @@ python3 run.py &
 API_PID=$!
 
 # Wait for API to start
-sleep 3
+sleep 10
 
 # Start Frontend
 echo "🌐 Starting Frontend..."

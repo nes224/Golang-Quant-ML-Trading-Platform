@@ -183,6 +183,140 @@ const US10YWidget = ({ us10yData }: { us10yData: any }) => {
   );
 };
 
+// Fundamental Bias Widget Component (Standalone)
+const FundamentalBiasWidget = ({ sentimentData }: { sentimentData: any }) => {
+  if (!sentimentData || sentimentData.error) return null;
+
+  const { score, label = 'Neutral', breakdown } = sentimentData;
+  let color = '#848e9c';
+  if (label && label.includes('Bullish')) color = '#0ecb81';
+  if (label && label.includes('Bearish')) color = '#f6465d';
+  const percentage = ((score + 10) / 20) * 100;
+
+  return (
+    <div className="dxy-widget">
+      <div className="dxy-header">
+        <h3>📰 Fundamental Bias (3D)</h3>
+        <span className="dxy-alert-badge" style={{ backgroundColor: color }}>{label}</span>
+      </div>
+      <div className="dxy-content">
+        <div className="dxy-price-box">
+          <span className="dxy-price" style={{ color: color }}>{score > 0 ? '+' : ''}{score}</span>
+          <span className="dxy-change">Score (-10 to +10)</span>
+        </div>
+        <div className="sentiment-gauge" style={{
+          height: '6px',
+          background: '#2a2e39',
+          borderRadius: '3px',
+          margin: '10px 0',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            height: '100%',
+            width: `${percentage}%`,
+            background: `linear-gradient(90deg, #f6465d 0%, #848e9c 50%, #0ecb81 100%)`,
+            transition: 'width 0.5s ease-out'
+          }} />
+          <div style={{
+            position: 'absolute',
+            left: '50%',
+            top: 0,
+            height: '100%',
+            width: '2px',
+            background: '#fff',
+            opacity: 0.5
+          }} />
+        </div>
+        <div className="dxy-correlation" style={{ justifyContent: 'space-between', fontSize: '12px' }}>
+          <span style={{ color: '#0ecb81' }}>Bull: {breakdown?.bullish || 0}</span>
+          <span style={{ color: '#848e9c' }}>Neu: {breakdown?.neutral || 0}</span>
+          <span style={{ color: '#f6465d' }}>Bear: {breakdown?.bearish || 0}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// DXY & US10Y Combined Widget
+const MarketCorrelationWidget = ({ dxyData, us10yData }: { dxyData: any, us10yData: any }) => {
+  const dxyPrice = dxyData?.price || 0;
+  const dxyChange = dxyData?.change || 0;
+  const dxyChangePct = dxyData?.change_percent || 0;
+  const dxyCorrelation = dxyData?.correlation || 0;
+  const dxyAlert = dxyData?.alert;
+  const dxyIsPositive = dxyChange >= 0;
+
+  const us10yPrice = us10yData?.price || 0;
+  const us10yChange = us10yData?.change || 0;
+  const us10yChangePct = us10yData?.change_percent || 0;
+  const us10yCorrelation = us10yData?.correlation || 0;
+  const us10yAlert = us10yData?.alert;
+  const us10yIsPositive = us10yChange >= 0;
+
+  const dxyCorrelationColor = dxyCorrelation < -0.5 ? '#0ecb81' : (dxyCorrelation > 0.5 ? '#f6465d' : '#848e9c');
+  const dxyCorrelationText = dxyCorrelation < -0.5 ? 'Strong Inverse' : (dxyCorrelation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
+
+  const us10yCorrelationColor = us10yCorrelation < -0.5 ? '#0ecb81' : (us10yCorrelation > 0.5 ? '#f6465d' : '#848e9c');
+  const us10yCorrelationText = us10yCorrelation < -0.5 ? 'Strong Inverse' : (us10yCorrelation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
+
+  return (
+    <div className="dxy-widget" style={{ width: '100%' }}>
+      <div className="dxy-header">
+        <h3>📊 Market Correlation Indicators</h3>
+      </div>
+      <div className="dxy-content">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+
+          {/* DXY Section */}
+          <div style={{ borderRight: '1px solid #2a2e39', paddingRight: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h4 style={{ margin: 0, fontSize: '14px', color: '#848e9c' }}>💵 Dollar Index (DXY)</h4>
+              {dxyAlert && <span className="dxy-alert-badge" style={{ fontSize: '11px', padding: '2px 8px' }}>⚠️ {dxyAlert.message}</span>}
+            </div>
+            <div className="dxy-price-box">
+              <span className="dxy-price">{dxyPrice?.toFixed(3)}</span>
+              <span className={`dxy-change ${dxyIsPositive ? 'positive' : 'negative'}`}>
+                {dxyIsPositive ? '+' : ''}{dxyChange?.toFixed(3)} ({dxyIsPositive ? '+' : ''}{dxyChangePct?.toFixed(2)}%)
+              </span>
+            </div>
+            <div className="dxy-correlation">
+              <span className="label">Gold Correlation (20):</span>
+              <span className="value" style={{ color: dxyCorrelationColor }}>
+                {dxyCorrelation?.toFixed(2)} ({dxyCorrelationText})
+              </span>
+            </div>
+          </div>
+
+          {/* US10Y Section */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h4 style={{ margin: 0, fontSize: '14px', color: '#848e9c' }}>🇺🇸 US 10Y Yield</h4>
+              {us10yAlert && <span className="dxy-alert-badge" style={{ fontSize: '11px', padding: '2px 8px' }}>⚠️ {us10yAlert.message}</span>}
+            </div>
+            <div className="dxy-price-box">
+              <span className="dxy-price">{us10yPrice?.toFixed(3)}%</span>
+              <span className={`dxy-change ${us10yIsPositive ? 'positive' : 'negative'}`}>
+                {us10yIsPositive ? '+' : ''}{us10yChange?.toFixed(3)} ({us10yIsPositive ? '+' : ''}{us10yChangePct?.toFixed(2)}%)
+              </span>
+            </div>
+            <div className="dxy-correlation">
+              <span className="label">Gold Correlation (20):</span>
+              <span className="value" style={{ color: us10yCorrelationColor }}>
+                {us10yCorrelation?.toFixed(2)} ({us10yCorrelationText})
+              </span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const [candleData, setCandleData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -190,6 +324,7 @@ export default function Dashboard() {
   const [selectedSymbol, setSelectedSymbol] = useState('GC=F');
   const [dxyData, setDxyData] = useState<any>(null);
   const [us10yData, setUs10yData] = useState<any>(null);
+  const [sentimentData, setSentimentData] = useState<any>(null);
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Load Plotly from CDN
@@ -248,14 +383,27 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch DXY and US10Y on mount and periodically
+  // Fetch Sentiment data
+  const fetchSentimentData = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/news/sentiment?days=3');
+      const data = await response.json();
+      setSentimentData(data);
+    } catch (error) {
+      console.error('Error fetching sentiment data:', error);
+    }
+  };
+
+  // Fetch DXY, US10Y, and Sentiment on mount and periodically
   useEffect(() => {
     fetchDXYData();
     fetchUS10YData();
+    fetchSentimentData();
 
     const interval = setInterval(() => {
       fetchDXYData();
       fetchUS10YData();
+      fetchSentimentData();
     }, 60000); // Update every 60 seconds
 
     return () => clearInterval(interval);
@@ -529,12 +677,6 @@ export default function Dashboard() {
 
         <MarketSessions />
 
-        {/* DXY and US10Y Widgets */}
-        <div className="correlation-widgets">
-          <DXYWidget dxyData={dxyData} />
-          <US10YWidget us10yData={us10yData} />
-        </div>
-
         <div className="timeframe-selector" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
@@ -571,6 +713,12 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+
+          {/* Fundamental Bias Widget - Standalone */}
+          <FundamentalBiasWidget sentimentData={sentimentData} />
+
+          {/* DXY & US10Y Combined Widget */}
+          <MarketCorrelationWidget dxyData={dxyData} us10yData={us10yData} />
 
           <div className="chart-info">
             <div className="info-card">

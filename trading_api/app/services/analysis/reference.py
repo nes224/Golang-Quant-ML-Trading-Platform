@@ -101,6 +101,10 @@ def get_dxy_analysis(timeframe: str = "1d") -> Dict:
         
         # Get price and indicators (Convert numpy types to native python)
         price = float(last_row['Close'])
+        open_price = float(last_row['Open'])
+        change = price - open_price
+        change_percent = (change / open_price) * 100 if open_price != 0 else 0
+        
         rsi = float(last_row.get('RSI', 0)) if not pd.isna(last_row.get('RSI')) else 0.0
         ema_50 = float(last_row.get('EMA_50', 0)) if not pd.isna(last_row.get('EMA_50')) else 0.0
         ema_200 = float(last_row.get('EMA_200', 0)) if not pd.isna(last_row.get('EMA_200')) else 0.0
@@ -116,7 +120,10 @@ def get_dxy_analysis(timeframe: str = "1d") -> Dict:
         return {
             "symbol": "DXY",
             "timeframe": timeframe,
-            "price": round(price, 2),
+            "price": round(price, 3),
+            "open": round(open_price, 3),
+            "change": round(change, 3),
+            "change_percent": round(change_percent, 2),
             "trend": trend,
             "trend_strength": strength,
             "rsi": round(rsi, 2),
@@ -160,6 +167,10 @@ def get_us10y_analysis(timeframe: str = "1d") -> Dict:
         
         # Get price and indicators
         price = float(last_row['Close'])
+        open_price = float(last_row['Open'])
+        change = price - open_price
+        change_percent = (change / open_price) * 100 if open_price != 0 else 0
+        
         rsi = float(last_row.get('RSI', 0)) if not pd.isna(last_row.get('RSI')) else 0.0
         ema_50 = float(last_row.get('EMA_50', 0)) if not pd.isna(last_row.get('EMA_50')) else 0.0
         ema_200 = float(last_row.get('EMA_200', 0)) if not pd.isna(last_row.get('EMA_200')) else 0.0
@@ -184,6 +195,9 @@ def get_us10y_analysis(timeframe: str = "1d") -> Dict:
             "symbol": "US10Y",
             "timeframe": timeframe,
             "price": round(price, 3),
+            "open": round(open_price, 3),
+            "change": round(change, 3),
+            "change_percent": round(change_percent, 2),
             "trend": trend,
             "trend_strength": strength,
             "rsi": round(rsi, 2),

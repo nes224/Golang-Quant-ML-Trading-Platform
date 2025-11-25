@@ -14,6 +14,19 @@ def create_news(news: NewsCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/news/sentiment")
+def get_market_sentiment(days: int = Query(default=3, ge=1, le=30)):
+    """
+    Get market sentiment analysis based on recent news.
+    
+    Returns:
+        Sentiment score, label, and breakdown.
+    """
+    try:
+        return news_manager.calculate_market_sentiment(days=days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/news/search")
 def search_news(
     keyword: Optional[str] = None,

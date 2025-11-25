@@ -438,8 +438,13 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
                 start_date = last_timestamp.date()
                 
                 try:
-                    # yfinance requires start date string
-                    new_df = yf.download(symbol, start=str(start_date), interval=interval, progress=False, auto_adjust=True)
+                    # Check if start_date is in the future to prevent Yahoo errors
+                    if start_date > datetime.now().date():
+                        # Cache is ahead of current time, skip fetch
+                        new_df = pd.DataFrame()
+                    else:
+                        # yfinance requires start date string
+                        new_df = yf.download(symbol, start=str(start_date), interval=interval, progress=False, auto_adjust=True)
                     
                     # Handle MultiIndex
                     if isinstance(new_df.columns, pd.MultiIndex):
