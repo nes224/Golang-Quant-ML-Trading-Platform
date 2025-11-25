@@ -25,7 +25,9 @@ def get_multi_tf_trend(symbol: str = Query(default="GC=F", description="Trading 
 def get_candlestick_data(
     timeframe: str = "1h",
     symbol: str = Query(default="GC=F", description="Trading symbol"),
-    limit: int = Query(default=100, description="Number of candles to return")
+    limit: int = Query(default=100, description="Number of candles to return"),
+    start: str = Query(default=None, description="Start date (YYYY-MM-DD or ISO)"),
+    end: str = Query(default=None, description="End date (YYYY-MM-DD or ISO)")
 ):
     """
     Get OHLC candlestick data for charting.
@@ -33,14 +35,43 @@ def get_candlestick_data(
     Timeframes: 5m, 15m, 30m, 1h, 4h, 1d
     """
     try:
-        # Fetch data (use longer period for H1 to ensure enough candles)
-        period = "6mo" if timeframe == "1h" else "2mo"
-        df = fetch_data(symbol=symbol, period=period, interval=timeframe)
+        # Fetch data
+        if start:
+            # Historical Data Mode with Buffering
+            from datetime import datetime, timedelta
+            
+            # Parse start date
+            try:
+                start_dt = datetime.fromisoformat(start.replace('Z', '+00:00')).replace(tzinfo=None)
+            except ValueError:
+                start_dt = datetime.strptime(start, "%Y-%m-%d")
+                
+            # Calculate buffer for indicators (approx 200 candles)
+            # This ensures EMA 200 and other indicators are accurate for the first visible candle
+            buffer_days = 0
+            if timeframe == "1m": buffer_days = 1  # 1440 candles/day
+            elif timeframe == "5m": buffer_days = 2 # 288 candles/day
+            elif timeframe == "15m": buffer_days = 5 # 96 candles/day
+            elif timeframe == "30m": buffer_days = 10 # 48 candles/day
+            elif timeframe == "1h": buffer_days = 15 # 24 candles/day
+            elif timeframe == "4h": buffer_days = 60 # 6 candles/day
+            elif timeframe == "1d": buffer_days = 300 # 1 candle/day
+            
+            buffer_start_dt = start_dt - timedelta(days=buffer_days)
+            buffer_start_str = buffer_start_dt.strftime("%Y-%m-%d")
+            
+            # Fetch buffered data
+            df = fetch_data(symbol=symbol, interval=timeframe, start_date=buffer_start_str, end_date=end)
+            
+        else:
+            # Live Data Mode (Default)
+            period = "6mo" if timeframe == "1h" else "2mo"
+            df = fetch_data(symbol=symbol, period=period, interval=timeframe)
         
         if df is None or df.empty:
             raise HTTPException(status_code=404, detail="No data available")
         
-        # Calculate indicators
+        # Calculate indicators (on full buffered data)
         df = calculate_indicators(df)
         
         # Adjust pivot detection based on timeframe
@@ -57,14 +88,7 @@ def get_candlestick_data(
         # Identify Key Levels
         key_levels = identify_key_levels(df, bin_width=0.003, min_touches=3)
         
-        # Get visible range for candles
-        df_visible = df.tail(limit)
-        visible_times = set(str(idx) for idx in df_visible.index)
-        
         # Detect FVG
-        fvg_zones = []
-        break_signals = []
-        
         # Adjust FVG parameters based on timeframe
         if timeframe in ['1m', '5m']:
             lookback = 5
@@ -98,6 +122,26 @@ def get_candlestick_data(
         start_time = time.time()
         df = detect_break_signal(df)
         print(f"[Break Signals] Completed in {time.time() - start_time:.2f}s")
+        
+        # --- FILTERING FOR RESPONSE ---
+        
+        # Get visible range for candles
+        if start:
+            # Filter by start date (remove buffer)
+            # Ensure index is datetime
+            if not isinstance(df.index, pd.DatetimeIndex):
+                df.index = pd.to_datetime(df.index)
+                
+            # Filter
+            df_visible = df[df.index >= start_dt]
+            if end:
+                # Optional: filter end date too if strictly required, but usually 'end' just limits fetch
+                pass
+        else:
+            # Default limit
+            df_visible = df.tail(limit)
+            
+        visible_times = set(str(idx) for idx in df_visible.index)
         
         # Get FVG zones
         all_fvg_zones = get_fvg_zones(df)
@@ -144,4 +188,6 @@ def get_candlestick_data(
         }
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

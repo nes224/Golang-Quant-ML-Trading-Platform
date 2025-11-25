@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from app.config import Config
 
-def fetch_data_yahoo(symbol="GC=F", period="2mo", interval="1d"):
+def fetch_data_yahoo(symbol="GC=F", period="2mo", interval="1d", start_date=None, end_date=None):
     """
     Fetches historical data from yfinance.
     Default symbol 'GC=F' is Gold Futures (close proxy for XAU/USD).
@@ -27,19 +27,23 @@ def fetch_data_yahoo(symbol="GC=F", period="2mo", interval="1d"):
     }
     
     # Apply Yahoo limits if interval has restrictions
-    if fetch_interval in yahoo_limits:
+    if fetch_interval in yahoo_limits and not start_date:
         period = yahoo_limits[fetch_interval]
     
     # yfinance doesn't support 4h natively, so we fetch 1h and resample
     if interval == "4h":
         fetch_interval = "1h"
         # Ensure we have enough data for 4h resampling
-        if period in ["1d", "5d"]: 
+        if period in ["1d", "5d"] and not start_date: 
             period = "1mo" 
             
     try:
         # Disable threads to avoid potential race conditions with multiple symbols
-        df = yf.download(symbol, period=period, interval=fetch_interval, progress=False, auto_adjust=True, threads=False)
+        if start_date:
+            df = yf.download(symbol, start=start_date, end=end_date, interval=fetch_interval, progress=False, auto_adjust=True, threads=False)
+        else:
+            df = yf.download(symbol, period=period, interval=fetch_interval, progress=False, auto_adjust=True, threads=False)
+
         if df.empty:
             return None
         # Ensure columns are flat if multi-index (yfinance update)
@@ -373,7 +377,7 @@ def fetch_data_twelve(symbol="XAU/USD", period="1y", interval="1d"):
         print(f"[ERROR] Failed to fetch data from Twelve Data: {e}")
         return None
 
-def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
+def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True, start_date=None, end_date=None):
     """
     Fetch OHLC data with Smart Incremental Sync.
     
@@ -391,6 +395,11 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
     cached_df = None
     last_timestamp = None
     
+    # If specific dates are requested, bypass standard cache logic for now to ensure accuracy
+    # (We can optimize this later to check if cache covers the range)
+    if start_date:
+        use_cache = False
+
     # 1. Try to get from cache
     # Force disable cache for DXY and US10Y to prevent data mixing issues
     if symbol in ["DX=F", "DX-Y.NYB", "^TNX", "^DXY"]:
@@ -415,15 +424,15 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
         # Force Yahoo for Indices that are not available/reliable on other sources
         force_yahoo = symbol in ["DX=F", "DX-Y.NYB", "^TNX", "^DXY"]
         
-        if Config.DATA_SOURCE == "MT5" and not force_yahoo:
+        if Config.DATA_SOURCE == "MT5" and not force_yahoo and not start_date:
             # MT5 Logic (Simplified for now - usually fetches latest N bars)
             mt5_symbol = "XAUUSD" if symbol == "GC=F" else symbol
             new_df = fetch_data_mt5(mt5_symbol, period, interval)
-        elif Config.DATA_SOURCE == "FINNHUB" and not force_yahoo:
+        elif Config.DATA_SOURCE == "FINNHUB" and not force_yahoo and not start_date:
             # Finnhub Logic
             finnhub_symbol = "OANDA:XAU_USD" if symbol == "GC=F" else symbol
             new_df = fetch_data_finnhub(finnhub_symbol, period, interval)
-        elif Config.DATA_SOURCE == "TWELVE" and not force_yahoo:
+        elif Config.DATA_SOURCE == "TWELVE" and not force_yahoo and not start_date:
             # Twelve Data Logic
             twelve_symbol = "XAU/USD" if symbol == "GC=F" else symbol
             new_df = fetch_data_twelve(twelve_symbol, period, interval)
@@ -432,19 +441,23 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True):
             import yfinance as yf
             from datetime import timedelta
             
+            if start_date:
+                 # Direct fetch for specific range
+                 new_df = fetch_data_yahoo(symbol, period, interval, start_date=start_date, end_date=end_date)
+            
             # If we have cache, only fetch missing data
-            if last_timestamp:
+            elif last_timestamp:
                 # Add small buffer to ensure overlap/continuity
-                start_date = last_timestamp.date()
+                fetch_start = last_timestamp.date()
                 
                 try:
                     # Check if start_date is in the future to prevent Yahoo errors
-                    if start_date > datetime.now().date():
+                    if fetch_start > datetime.now().date():
                         # Cache is ahead of current time, skip fetch
                         new_df = pd.DataFrame()
                     else:
                         # yfinance requires start date string
-                        new_df = yf.download(symbol, start=str(start_date), interval=interval, progress=False, auto_adjust=True)
+                        new_df = yf.download(symbol, start=str(fetch_start), interval=interval, progress=False, auto_adjust=True)
                     
                     # Handle MultiIndex
                     if isinstance(new_df.columns, pd.MultiIndex):
