@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
 import pandas as pd
 import time
+from typing import List, Optional
+from pydantic import BaseModel
 from app.services.data_provider import fetch_data
 from app.services.analysis.indicators import calculate_indicators
 from app.services.analysis.trends import calculate_multi_tf_trend
@@ -8,6 +10,43 @@ from app.services.analysis.levels import identify_pivot_points, identify_key_lev
 from app.services.analysis.fvg import detect_fvg, fill_key_levels, detect_break_signal, get_fvg_zones, get_break_signals
 
 router = APIRouter()
+
+class BulkFetchRequest(BaseModel):
+    symbol: str
+    timeframe: str
+    limit: int = 100
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+@router.post("/candlestick/bulk-fetch")
+def bulk_fetch_candlestick_data(requests: List[BulkFetchRequest]):
+    """
+    Batch fetch candlestick data for multiple symbols/timeframes.
+    """
+    results = []
+    for req in requests:
+        try:
+            data = get_candlestick_data(
+                timeframe=req.timeframe,
+                symbol=req.symbol,
+                limit=req.limit,
+                start=req.start,
+                end=req.end
+            )
+            results.append({
+                "symbol": req.symbol,
+                "timeframe": req.timeframe,
+                "status": "success",
+                "data": data
+            })
+        except Exception as e:
+            results.append({
+                "symbol": req.symbol,
+                "timeframe": req.timeframe,
+                "status": "error",
+                "error": str(e)
+            })
+    return results
 
 @router.get("/multi-tf-trend")
 def get_multi_tf_trend(symbol: str = Query(default="GC=F", description="Trading symbol")):

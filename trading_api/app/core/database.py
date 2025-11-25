@@ -176,6 +176,19 @@ class DatabaseManager:
                     )
                 """)
                 
+                # Market Data Metadata Table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS market_data_metadata (
+                        symbol VARCHAR(20) NOT NULL,
+                        timeframe VARCHAR(10) NOT NULL,
+                        last_fetch_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        data_start_date TIMESTAMP,
+                        data_end_date TIMESTAMP,
+                        data_quality_score NUMERIC DEFAULT 100,
+                        PRIMARY KEY (symbol, timeframe)
+                    )
+                """)
+                
                 # Create indexes for better performance
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
@@ -665,6 +678,63 @@ class DatabaseManager:
             # Silently skip if database/table not available
             if "does not exist" not in str(e) and "Database connection pool not initialized" not in str(e):
                 print(f"[ERROR] Failed to get cached data: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def update_market_metadata(self, symbol: str, timeframe: str, start_date: datetime, end_date: datetime) -> None:
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                # First get existing metadata to merge ranges
+                cur.execute(
+                    "SELECT data_start_date, data_end_date FROM market_data_metadata WHERE symbol = %s AND timeframe = %s",
+                    (symbol, timeframe)
+                )
+                row = cur.fetchone()
+                
+                new_start = start_date
+                new_end = end_date
+                
+                if row:
+                    existing_start = row[0]
+                    existing_end = row[1]
+                    if existing_start and existing_start < new_start:
+                        new_start = existing_start
+                    if existing_end and existing_end > new_end:
+                        new_end = existing_end
+                
+                cur.execute("""
+                    INSERT INTO market_data_metadata (
+                        symbol, timeframe, last_fetch_at, data_start_date, data_end_date
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (symbol, timeframe) DO UPDATE SET
+                        last_fetch_at = EXCLUDED.last_fetch_at,
+                        data_start_date = EXCLUDED.data_start_date,
+                        data_end_date = EXCLUDED.data_end_date
+                """, (symbol, timeframe, datetime.now(), new_start, new_end))
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            # Silently skip if table doesn't exist yet
+            if "does not exist" not in str(e):
+                print(f"[ERROR] Failed to update market metadata: {e}")
+        finally:
+            self.return_connection(conn)
+
+    def get_market_metadata(self, symbol: str, timeframe: str) -> Optional[Dict]:
+        conn = self.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM market_data_metadata WHERE symbol = %s AND timeframe = %s",
+                    (symbol, timeframe)
+                )
+                return cur.fetchone()
+        except Exception as e:
+            # Silently skip if table doesn't exist yet
+            if "does not exist" not in str(e):
+                print(f"[ERROR] Failed to get market metadata: {e}")
             return None
         finally:
             self.return_connection(conn)
