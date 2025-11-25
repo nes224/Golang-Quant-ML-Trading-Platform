@@ -1,7 +1,22 @@
 import pandas as pd
+import math
 from typing import Dict, Optional
 from app.services.data_provider import fetch_data
 from app.services.analysis.indicators import calculate_indicators
+
+def safe_float(value, default=0.0):
+    """
+    Safely convert value to float, handling NaN and Infinity
+    """
+    try:
+        if pd.isna(value):
+            return default
+        float_val = float(value)
+        if math.isinf(float_val) or math.isnan(float_val):
+            return default
+        return float_val
+    except (ValueError, TypeError):
+        return default
 
 def detect_trend(df: pd.DataFrame, method: str = "ema") -> str:
     """
@@ -99,15 +114,15 @@ def get_dxy_analysis(timeframe: str = "1d") -> Dict:
         # Detect trend
         trend = detect_trend(df, method="ema")
         
-        # Get price and indicators (Convert numpy types to native python)
-        price = float(last_row['Close'])
-        open_price = float(last_row['Open'])
+        # Get price and indicators (Use safe_float to prevent NaN/Inf)
+        price = safe_float(last_row['Close'], 0.0)
+        open_price = safe_float(last_row['Open'], 0.0)
         change = price - open_price
-        change_percent = (change / open_price) * 100 if open_price != 0 else 0
+        change_percent = safe_float((change / open_price) * 100 if open_price != 0 else 0, 0.0)
         
-        rsi = float(last_row.get('RSI', 0)) if not pd.isna(last_row.get('RSI')) else 0.0
-        ema_50 = float(last_row.get('EMA_50', 0)) if not pd.isna(last_row.get('EMA_50')) else 0.0
-        ema_200 = float(last_row.get('EMA_200', 0)) if not pd.isna(last_row.get('EMA_200')) else 0.0
+        rsi = safe_float(last_row.get('RSI', 0), 0.0)
+        ema_50 = safe_float(last_row.get('EMA_50', 0), 0.0)
+        ema_200 = safe_float(last_row.get('EMA_200', 0), 0.0)
         
         # Determine trend strength
         if trend == "UP":
@@ -133,11 +148,16 @@ def get_dxy_analysis(timeframe: str = "1d") -> Dict:
         }
         
     except Exception as e:
-        print(f"Error fetching DXY data: {e}")
+        # Silently handle errors to prevent console spam
+        # Common errors: Connection refused, rate limit, etc.
+        import logging
+        logging.warning(f"DXY data fetch failed: {e}")
         return {
             "symbol": "DXY",
-            "error": str(e),
-            "trend": "UNKNOWN"
+            "error": "Service temporarily unavailable",
+            "trend": "UNKNOWN",
+            "price": 0.0,
+            "change_percent": 0.0
         }
 
 def get_us10y_analysis(timeframe: str = "1d") -> Dict:
@@ -165,15 +185,15 @@ def get_us10y_analysis(timeframe: str = "1d") -> Dict:
         # Detect trend
         trend = detect_trend(df, method="ema")
         
-        # Get price and indicators
-        price = float(last_row['Close'])
-        open_price = float(last_row['Open'])
+        # Get price and indicators (Use safe_float to prevent NaN/Inf)
+        price = safe_float(last_row['Close'], 0.0)
+        open_price = safe_float(last_row['Open'], 0.0)
         change = price - open_price
-        change_percent = (change / open_price) * 100 if open_price != 0 else 0
+        change_percent = safe_float((change / open_price) * 100 if open_price != 0 else 0, 0.0)
         
-        rsi = float(last_row.get('RSI', 0)) if not pd.isna(last_row.get('RSI')) else 0.0
-        ema_50 = float(last_row.get('EMA_50', 0)) if not pd.isna(last_row.get('EMA_50')) else 0.0
-        ema_200 = float(last_row.get('EMA_200', 0)) if not pd.isna(last_row.get('EMA_200')) else 0.0
+        rsi = safe_float(last_row.get('RSI', 0), 0.0)
+        ema_50 = safe_float(last_row.get('EMA_50', 0), 0.0)
+        ema_200 = safe_float(last_row.get('EMA_200', 0), 0.0)
         
         # Determine trend strength
         if trend == "UP":
@@ -207,11 +227,15 @@ def get_us10y_analysis(timeframe: str = "1d") -> Dict:
         }
         
     except Exception as e:
-        print(f"Error fetching US10Y data: {e}")
+        # Silently handle errors to prevent console spam
+        import logging
+        logging.warning(f"US10Y data fetch failed: {e}")
         return {
             "symbol": "US10Y",
-            "error": str(e),
-            "trend": "UNKNOWN"
+            "error": "Service temporarily unavailable",
+            "trend": "UNKNOWN",
+            "price": 0.0,
+            "change_percent": 0.0
         }
 
 

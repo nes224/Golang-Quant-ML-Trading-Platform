@@ -26,9 +26,28 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 async def startup_event():
+    # Auto-import data from other OS
+    try:
+        from app.services.db_sync import auto_import_on_startup
+        auto_import_on_startup()
+    except Exception as e:
+        print(f"[WARNING] Auto-import failed: {e}")
+    
     # Start background task for real-time data broadcast
     asyncio.create_task(broadcast_market_data())
     print("[OK] Application started successfully")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    # Auto-export database before shutdown
+    try:
+        from app.services.db_sync import auto_export_on_shutdown
+        auto_export_on_shutdown()
+    except Exception as e:
+        print(f"[WARNING] Auto-export failed: {e}")
+    
+    print("[OK] Application shutdown complete")
 
 @app.get("/")
 def read_root():

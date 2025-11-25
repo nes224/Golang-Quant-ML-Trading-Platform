@@ -88,20 +88,6 @@
 
 ### 7. Frontend
 - **Framework**: Next.js 14 with TypeScript
-- **Styling**: Custom CSS with dark theme
-- **Navigation**: Global navbar with active state
-- **Responsive Design**: Optimized for desktop trading
-
----
-
-## 🎯 Future Development Plan (Phase 2)
-
-### Priority 1: Historical Data Management
-- [ ] **Historical Price Data Fetching**
-  - [ ] **Backend Implementation**
-    - Extend `data_provider.py` to support date range queries
-    - Add `start_date` and `end_date` parameters to fetch functions
-    - Implement data validation and gap detection
     - Add caching layer for historical data (PostgreSQL)
     - Support multiple timeframes (1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M)
   

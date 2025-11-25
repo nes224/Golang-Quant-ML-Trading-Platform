@@ -738,6 +738,120 @@ class DatabaseManager:
             return None
         finally:
             self.return_connection(conn)
+    
+    # ==================== SYNC OPERATIONS ====================
+    
+    def execute_query(self, query: str):
+        """
+        Execute a SELECT query and return results as DataFrame
+        Used for database sync operations
+        """
+        import pandas as pd
+        
+        conn = self.get_connection()
+        try:
+            df = pd.read_sql_query(query, conn)
+            return df
+        except Exception as e:
+            print(f"[ERROR] Query execution failed: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+    
+    def upsert_market_data_row(self, row_data: Dict):
+        """
+        Upsert a single market data row (for sync import)
+        """
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO market_data (symbol, timeframe, timestamp, open, high, low, close, volume)
+                    VALUES (%(symbol)s, %(interval)s, %(timestamp)s, %(open)s, %(high)s, %(low)s, %(close)s, %(volume)s)
+                    ON CONFLICT (symbol, timeframe, timestamp) 
+                    DO UPDATE SET
+                        open = EXCLUDED.open,
+                        high = EXCLUDED.high,
+                        low = EXCLUDED.low,
+                        close = EXCLUDED.close,
+                        volume = EXCLUDED.volume
+                """, row_data)
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to upsert market data row: {e}")
+        finally:
+            self.return_connection(conn)
+    
+    def upsert_journal_entry(self, entry_data: Dict):
+        """
+        Upsert journal entry (for sync import)
+        """
+        return self.save_journal_entry(entry_data)
+    
+    def upsert_checklist_entry(self, entry_data: Dict):
+        """
+        Upsert checklist entry (for sync import)
+        """
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO checklist_monthly (month, item_name, count)
+                    VALUES (%(month)s, %(item_name)s, %(count)s)
+                    ON CONFLICT (month, item_name) 
+                    DO UPDATE SET count = EXCLUDED.count
+                """, entry_data)
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to upsert checklist entry: {e}")
+        finally:
+            self.return_connection(conn)
+    
+    def upsert_news_entry(self, entry_data: Dict):
+        """
+        Upsert news entry (for sync import)
+        """
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Check if news_analysis table exists
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'news_analysis'
+                    )
+                """)
+                table_exists = cur.fetchone()[0]
+                
+                if not table_exists:
+                    print("[SKIP] news_analysis table does not exist")
+                    return
+                
+                # Upsert logic (assuming id is unique or use other unique fields)
+                cur.execute("""
+                    INSERT INTO news_analysis (
+                        date, time, source, title, content, url, 
+                        ai_analysis, sentiment, impact_score, tags
+                    ) VALUES (
+                        %(date)s, %(time)s, %(source)s, %(title)s, %(content)s, %(url)s,
+                        %(ai_analysis)s, %(sentiment)s, %(impact_score)s, %(tags)s
+                    )
+                    ON CONFLICT (date, time, title) 
+                    DO UPDATE SET
+                        content = EXCLUDED.content,
+                        ai_analysis = EXCLUDED.ai_analysis,
+                        sentiment = EXCLUDED.sentiment,
+                        impact_score = EXCLUDED.impact_score,
+                        tags = EXCLUDED.tags
+                """, entry_data)
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to upsert news entry: {e}")
+        finally:
+            self.return_connection(conn)
 
 # Global instance
 db = DatabaseManager()
