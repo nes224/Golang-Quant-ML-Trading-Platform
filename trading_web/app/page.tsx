@@ -1,370 +1,42 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Navbar from './components/Navbar';
-import MultiTFIndicator from './components/MultiTFIndicator';
+import Navbar from '@/app/components/Navbar';
+import MarketSessions from '@/app/components/MarketSessions';
+import FundamentalBiasWidget from '@/app/components/FundamentalBiasWidget';
+import MarketCorrelationWidget from '@/app/components/MarketCorrelationWidget';
+import MultiTFIndicator from '@/app/components/MultiTFIndicator';
+import { LiveIndicator } from '@/app/components/LiveIndicator';
+import { useRealtimeChart } from '@/app/hooks/useRealtimeChart';
 import './dashboard.css';
+import './components/HistoryLoading.css';
 
 // Declare Plotly type
 declare const Plotly: any;
 
-// Market Sessions Component
-const MarketSessions = () => {
-  const [currentTime, setCurrentTime] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const sessions = [
-    { name: 'Sydney (AUD)', start: 5, end: 14, color: '#4caf50' }, // 05:00 - 14:00
-    { name: 'Tokyo (JPY)', start: 6, end: 15, color: '#2196f3' },   // 06:00 - 15:00
-    { name: 'China (CNY)', start: 8, end: 16, color: '#f44336' },   // 08:00 - 16:00
-    { name: 'Swiss (CHF)', start: 13, end: 21, color: '#e91e63' },  // 13:00 - 21:00
-    { name: 'Europe (EUR)', start: 14, end: 23, color: '#9c27b0' }, // 14:00 - 23:00
-    { name: 'London (GBP)', start: 15, end: 24, color: '#ff9800' }, // 15:00 - 00:00 (24)
-    { name: 'New York (USD)', start: 19, end: 28, color: '#ff5722' }, // 19:00 - 04:00 (+1 day)
-    { name: 'Canada (CAD)', start: 19, end: 28, color: '#795548' },   // 19:00 - 04:00 (+1 day)
-  ];
-
-  const currentHour = currentTime.getHours() + currentTime.getMinutes() / 60;
-
-  return (
-    <div className="market-sessions">
-      <h3>🕒 Market Sessions (UTC+7)</h3>
-      <div className="sessions-grid">
-        {/* Time Header */}
-        <div className="session-row header">
-          <div className="session-label">Time</div>
-          <div className="session-timeline">
-            {Array.from({ length: 24 }).map((_, i) => (
-              <div key={i} className="time-marker">{i}</div>
-            ))}
-          </div>
-        </div>
-
-        {/* Sessions */}
-        {sessions.map((session) => {
-          const start = session.start;
-          const end = session.end;
-
-          // Calculate first segment (up to midnight)
-          // If end > 24, the first bar goes from start to 24.
-          // If end <= 24, the bar goes from start to end.
-          const firstSegmentDuration = end > 24 ? (24 - start) : (end - start);
-
-          // Calculate second segment (after midnight, if any)
-          const secondSegmentDuration = end > 24 ? (end - 24) : 0;
-
-          // Check if current time falls within the session
-          // Case 1: Standard session (e.g., 08:00 - 16:00) -> start <= now < end
-          // Case 2: Crossing midnight (e.g., 19:00 - 04:00) -> (start <= now < 24) OR (0 <= now < end-24)
-          const isActive = end > 24
-            ? (currentHour >= start || currentHour < (end - 24))
-            : (currentHour >= start && currentHour < end);
-
-          return (
-            <div key={session.name} className="session-row">
-              <div className="session-label">{session.name}</div>
-              <div className="session-timeline">
-                {/* First Segment */}
-                <div
-                  className="session-bar"
-                  style={{
-                    left: `${(start / 24) * 100}%`,
-                    width: `${(firstSegmentDuration / 24) * 100}%`,
-                    backgroundColor: session.color,
-                    opacity: isActive ? 1 : 0.3
-                  }}
-                />
-
-                {/* Second Segment (Wrap around) */}
-                {secondSegmentDuration > 0 && (
-                  <div
-                    className="session-bar wrap"
-                    style={{
-                      left: `0%`,
-                      width: `${(secondSegmentDuration / 24) * 100}%`,
-                      backgroundColor: session.color,
-                      opacity: isActive ? 1 : 0.3
-                    }}
-                  />
-                )}
-
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Current Time Indicator */}
-        <div
-          className="current-time-line"
-          style={{ left: `calc(120px + (100% - 120px) * ${currentHour / 24})` }}
-        ></div>
-      </div>
-    </div>
-  );
-};
-
-// DXY Widget Component
-const DXYWidget = ({ dxyData }: { dxyData: any }) => {
-  if (!dxyData || dxyData.error) return null;
-
-  const price = dxyData.price || 0;
-  console.log("dxy::", price);
-  const change_pct = dxyData.change_pct || 0;
-  const correlation = dxyData.correlation || 0;
-  const alert = dxyData.alert;
-
-  const isPositive = change_pct >= 0;
-  const correlationColor = correlation < -0.5 ? '#0ecb81' : (correlation > 0.5 ? '#f6465d' : '#848e9c');
-  const correlationText = correlation < -0.5 ? 'Strong Inverse' : (correlation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
-
-  return (
-    <div className="dxy-widget">
-      <div className="dxy-header">
-        <h3>💵 Dollar Index (DXY)</h3>
-        {alert && <span className="dxy-alert-badge">⚠️ {alert.message}</span>}
-      </div>
-      <div className="dxy-content">
-        <div className="dxy-price-box">
-          <span className="dxy-price">{price?.toFixed(3)}</span>
-          <span className={`dxy-change ${isPositive ? 'positive' : 'negative'}`}>
-            {isPositive ? '+' : ''}{change_pct?.toFixed(2)}%
-          </span>
-        </div>
-        <div className="dxy-correlation">
-          <span className="label">Gold Correlation (20):</span>
-          <span className="value" style={{ color: correlationColor }}>
-            {correlation?.toFixed(2)} ({correlationText})
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// US10Y Widget Component
-const US10YWidget = ({ us10yData }: { us10yData: any }) => {
-  if (!us10yData || us10yData.error) return null;
-
-  const price = us10yData.price || 0;
-  console.log("us10y::", price)
-  const change_pct = us10yData.change_pct || 0;
-  const correlation = us10yData.correlation || 0;
-  const alert = us10yData.alert;
-
-  const isPositive = change_pct >= 0;
-  const correlationColor = correlation < -0.5 ? '#0ecb81' : (correlation > 0.5 ? '#f6465d' : '#848e9c');
-  const correlationText = correlation < -0.5 ? 'Strong Inverse' : (correlation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
-
-  return (
-    <div className="dxy-widget">
-      <div className="dxy-header">
-        <h3>🇺🇸 US 10Y Yield</h3>
-        {alert && <span className="dxy-alert-badge">⚠️ {alert.message}</span>}
-      </div>
-      <div className="dxy-content">
-        <div className="dxy-price-box">
-          <span className="dxy-price">{price?.toFixed(3)}%</span>
-          <span className={`dxy-change ${isPositive ? 'positive' : 'negative'}`}>
-            {isPositive ? '+' : ''}{change_pct?.toFixed(2)}%
-          </span>
-        </div>
-        <div className="dxy-correlation">
-          <span className="label">Gold Correlation (20):</span>
-          <span className="value" style={{ color: correlationColor }}>
-            {correlation?.toFixed(2)} ({correlationText})
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Fundamental Bias Widget Component (Standalone)
-const FundamentalBiasWidget = ({ sentimentData }: { sentimentData: any }) => {
-  if (!sentimentData || sentimentData.error) return null;
-
-  const { score, label = 'Neutral', breakdown } = sentimentData;
-  let color = '#848e9c';
-  if (label && label.includes('Bullish')) color = '#0ecb81';
-  if (label && label.includes('Bearish')) color = '#f6465d';
-  const percentage = ((score + 10) / 20) * 100;
-
-  return (
-    <div className="dxy-widget">
-      <div className="dxy-header">
-        <h3>📰 Fundamental Bias (3D)</h3>
-        <span className="dxy-alert-badge" style={{ backgroundColor: color }}>{label}</span>
-      </div>
-      <div className="dxy-content">
-        <div className="dxy-price-box">
-          <span className="dxy-price" style={{ color: color }}>{score > 0 ? '+' : ''}{score}</span>
-          <span className="dxy-change">Score (-10 to +10)</span>
-        </div>
-        <div className="sentiment-gauge" style={{
-          height: '6px',
-          background: '#2a2e39',
-          borderRadius: '3px',
-          margin: '10px 0',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          <div style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            height: '100%',
-            width: `${percentage}%`,
-            background: `linear-gradient(90deg, #f6465d 0%, #848e9c 50%, #0ecb81 100%)`,
-            transition: 'width 0.5s ease-out'
-          }} />
-          <div style={{
-            position: 'absolute',
-            left: '50%',
-            top: 0,
-            height: '100%',
-            width: '2px',
-            background: '#fff',
-            opacity: 0.5
-          }} />
-        </div>
-        <div className="dxy-correlation" style={{ justifyContent: 'space-between', fontSize: '12px' }}>
-          <span style={{ color: '#0ecb81' }}>Bull: {breakdown?.bullish || 0}</span>
-          <span style={{ color: '#848e9c' }}>Neu: {breakdown?.neutral || 0}</span>
-          <span style={{ color: '#f6465d' }}>Bear: {breakdown?.bearish || 0}</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// DXY & US10Y Combined Widget
-const MarketCorrelationWidget = ({ dxyData, us10yData }: { dxyData: any, us10yData: any }) => {
-  const dxyPrice = dxyData?.price || 0;
-  const dxyChange = dxyData?.change || 0;
-  const dxyChangePct = dxyData?.change_percent || 0;
-  const dxyCorrelation = dxyData?.correlation || 0;
-  const dxyAlert = dxyData?.alert;
-  const dxyIsPositive = dxyChange >= 0;
-
-  const us10yPrice = us10yData?.price || 0;
-  const us10yChange = us10yData?.change || 0;
-  const us10yChangePct = us10yData?.change_percent || 0;
-  const us10yCorrelation = us10yData?.correlation || 0;
-  const us10yAlert = us10yData?.alert;
-  const us10yIsPositive = us10yChange >= 0;
-
-  const dxyCorrelationColor = dxyCorrelation < -0.5 ? '#0ecb81' : (dxyCorrelation > 0.5 ? '#f6465d' : '#848e9c');
-  const dxyCorrelationText = dxyCorrelation < -0.5 ? 'Strong Inverse' : (dxyCorrelation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
-
-  const us10yCorrelationColor = us10yCorrelation < -0.5 ? '#0ecb81' : (us10yCorrelation > 0.5 ? '#f6465d' : '#848e9c');
-  const us10yCorrelationText = us10yCorrelation < -0.5 ? 'Strong Inverse' : (us10yCorrelation > 0.5 ? 'Positive (Risk)' : 'Weak/None');
-
-  return (
-    <div className="dxy-widget" style={{ width: '100%' }}>
-      <div className="dxy-header">
-        <h3>📊 Market Correlation Indicators</h3>
-      </div>
-      <div className="dxy-content">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-
-          {/* DXY Section */}
-          <div style={{ borderRight: '1px solid #2a2e39', paddingRight: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <h4 style={{ margin: 0, fontSize: '14px', color: '#848e9c' }}>💵 Dollar Index (DXY)</h4>
-              {dxyAlert && <span className="dxy-alert-badge" style={{ fontSize: '11px', padding: '2px 8px' }}>⚠️ {dxyAlert.message}</span>}
-            </div>
-            <div className="dxy-price-box">
-              <span className="dxy-price">{dxyPrice?.toFixed(3)}</span>
-              <span className={`dxy-change ${dxyIsPositive ? 'positive' : 'negative'}`}>
-                {dxyIsPositive ? '+' : ''}{dxyChange?.toFixed(3)} ({dxyIsPositive ? '+' : ''}{dxyChangePct?.toFixed(2)}%)
-              </span>
-            </div>
-            <div className="dxy-correlation">
-              <span className="label">Gold Correlation (20):</span>
-              <span className="value" style={{ color: dxyCorrelationColor }}>
-                {dxyCorrelation?.toFixed(2)} ({dxyCorrelationText})
-              </span>
-            </div>
-          </div>
-
-          {/* US10Y Section */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <h4 style={{ margin: 0, fontSize: '14px', color: '#848e9c' }}>🇺🇸 US 10Y Yield</h4>
-              {us10yAlert && <span className="dxy-alert-badge" style={{ fontSize: '11px', padding: '2px 8px' }}>⚠️ {us10yAlert.message}</span>}
-            </div>
-            <div className="dxy-price-box">
-              <span className="dxy-price">{us10yPrice?.toFixed(3)}%</span>
-              <span className={`dxy-change ${us10yIsPositive ? 'positive' : 'negative'}`}>
-                {us10yIsPositive ? '+' : ''}{us10yChange?.toFixed(3)} ({us10yIsPositive ? '+' : ''}{us10yChangePct?.toFixed(2)}%)
-              </span>
-            </div>
-            <div className="dxy-correlation">
-              <span className="label">Gold Correlation (20):</span>
-              <span className="value" style={{ color: us10yCorrelationColor }}>
-                {us10yCorrelation?.toFixed(2)} ({us10yCorrelationText})
-              </span>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export default function Dashboard() {
-  const [candleData, setCandleData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
   const [selectedSymbol, setSelectedSymbol] = useState('GC=F');
+  const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
   const [dxyData, setDxyData] = useState<any>(null);
   const [us10yData, setUs10yData] = useState<any>(null);
   const [sentimentData, setSentimentData] = useState<any>(null);
   const chartRef = useRef<HTMLDivElement>(null);
 
-  // Load Plotly from CDN
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
-    script.async = true;
-    document.body.appendChild(script);
+  // Use Realtime Chart Hook
+  const {
+    candleData,
+    signals,
+    isLive,
+    isConnected,
+    lastUpdate,
+    reconnect,
+    fetchMoreHistory
+  } = useRealtimeChart(selectedSymbol, selectedTimeframe);
 
-    return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-  }, []);
-
-  // Fetch candlestick data
-  const fetchCandleData = async (timeframe: string = selectedTimeframe) => {
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `http://localhost:8000/candlestick/${timeframe}?symbol=${selectedSymbol}&limit=200`
-      );
-      const data = await response.json();
-      setCandleData(data);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching candle data:', error);
-      setLoading(false);
-    }
-  };
-  // Fetch data on mount and when dependencies change
-  useEffect(() => {
-    fetchCandleData();
-  }, [selectedTimeframe, selectedSymbol]);
-
-  // Fetch DXY data
+  // Fetch DXY Data
   const fetchDXYData = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/dxy');
+      const response = await fetch('http://localhost:8000/api/v1/market/quote/DX-Y.NYB');
       const data = await response.json();
       setDxyData(data);
     } catch (error) {
@@ -372,10 +44,10 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch US10Y data
+  // Fetch US10Y Data
   const fetchUS10YData = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/us10y');
+      const response = await fetch('http://localhost:8000/api/v1/market/quote/^TNX');
       const data = await response.json();
       setUs10yData(data);
     } catch (error) {
@@ -409,50 +81,24 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // WebSocket Connection
-  const wsRef = useRef<WebSocket | null>(null);
-
   // Render chart when data changes
   useEffect(() => {
-    if (candleData && candleData.candles && chartRef.current && typeof Plotly !== 'undefined') {
+    if (candleData && candleData.length > 0 && chartRef.current && typeof Plotly !== 'undefined') {
       renderChart();
     }
-  }, [candleData]);
+  }, [candleData, signals]);
 
   const renderChart = () => {
     if (!chartRef.current || !candleData) return;
 
-    const candles = candleData.candles;
-    const keyLevels = candleData.key_levels || [];
-    const pivotPoints = candleData.pivot_points || [];
-    const fvgZones = candleData.fvg_zones || [];
-    const breakSignals = candleData.break_signals || [];
-
-    console.log('Rendering chart with:', {
-      candles: candles.length,
-      keyLevels: keyLevels.length,
-      pivotPoints: pivotPoints.length,
-      fvgZones: fvgZones.length,
-      breakSignals: breakSignals.length,
-      pivotSample: pivotPoints.slice(0, 3),
-      candlePriceRange: candles.length > 0 ? {
-        min: Math.min(...candles.map((c: any) => c.low)),
-        max: Math.max(...candles.map((c: any) => c.high))
-      } : null
-    });
+    const candles = candleData;
+    const keyLevels = signals.key_levels || [];
+    const pivotPoints = signals.pivot_points || [];
+    const fvgZones = signals.fvg_zones || [];
+    const breakSignals = signals.break_signals || [];
 
     // Prepare data for Plotly
-    // Format dates for better readability on category axis
-    const x = candles.map((c: any) => {
-      const date = new Date(c.time);
-      // Simple formatting logic
-      if (selectedTimeframe.includes('m') || selectedTimeframe.includes('h')) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
-      } else {
-        return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: '2-digit' });
-      }
-    });
-
+    const x = candles.map((c: any) => c.time);
     const open = candles.map((c: any) => c.open);
     const high = candles.map((c: any) => c.high);
     const low = candles.map((c: any) => c.low);
@@ -474,21 +120,7 @@ export default function Dashboard() {
     };
 
     // Pivot Points
-    // Need to map pivot times to our formatted x-axis categories
-    // This is tricky with category axis because exact matching is required.
-    // A better approach for category axis is to use the index as x, and use tickvals/ticktext.
-    // But for simplicity, let's try to format pivot times same as candles.
-
-    const formatTime = (timeStr: string) => {
-      const date = new Date(timeStr);
-      if (selectedTimeframe.includes('m') || selectedTimeframe.includes('h')) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
-      } else {
-        return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: '2-digit' });
-      }
-    };
-
-    const pivotX = pivotPoints.map((p: any) => formatTime(p.time));
+    const pivotX = pivotPoints.map((p: any) => p.time);
     const pivotY = pivotPoints.map((p: any) => p.price);
     const trace2 = {
       x: pivotX,
@@ -511,7 +143,7 @@ export default function Dashboard() {
     const sellSignals = breakSignals.filter((s: any) => s.type === 'sell');
 
     const trace3 = {
-      x: buySignals.map((s: any) => formatTime(s.time)),
+      x: buySignals.map((s: any) => s.time),
       y: buySignals.map((s: any) => s.price),
       type: 'scatter',
       mode: 'markers',
@@ -522,7 +154,7 @@ export default function Dashboard() {
     };
 
     const trace4 = {
-      x: sellSignals.map((s: any) => formatTime(s.time)),
+      x: sellSignals.map((s: any) => s.time),
       y: sellSignals.map((s: any) => s.price),
       type: 'scatter',
       mode: 'markers',
@@ -539,57 +171,59 @@ export default function Dashboard() {
 
     // Key Levels as horizontal lines
     keyLevels.forEach((level: any) => {
-      const color = level.type === 'support' ? '#26a69a' : '#ef5350';
+      // Assuming level is just a number based on previous context, 
+      // but if it's an object, adapt accordingly.
+      // Based on hook, key_levels is number[]
+      const priceLevel = typeof level === 'object' ? level.level : level;
+
       shapes.push({
         type: 'line',
         xref: 'paper',
         x0: 0,
         x1: 1,
         yref: 'y',
-        y0: level.level,
-        y1: level.level,
+        y0: priceLevel,
+        y1: priceLevel,
         line: {
-          color: color,
-          width: 2,
+          color: '#2196f3',
+          width: 1,
           dash: 'dash'
         }
       });
     });
 
     // FVG Zones as rectangles
-    // Need raw times to find indices
-    const rawX = candles.map((c: any) => c.time);
-
     fvgZones.forEach((zone: any) => {
       const color = zone.type === 'bullish' ? 'rgba(0, 255, 0, 0.15)' : 'rgba(255, 0, 0, 0.15)';
-      // Find index using raw time
-      const timeIndex = rawX.indexOf(zone.time);
 
-      if (timeIndex >= 0) {
-        shapes.push({
-          type: 'rect',
-          xref: 'x',
-          yref: 'y',
-          // Use formatted x values for coordinates
-          x0: x[timeIndex],
-          x1: x[Math.min(timeIndex + 30, x.length - 1)],
-          y0: zone.start,
-          y1: zone.end,
-          fillcolor: color,
-          opacity: 0.6,
-          layer: 'below',
-          line: { width: 0 }
-        });
-      }
+      shapes.push({
+        type: 'rect',
+        xref: 'x',
+        yref: 'y',
+        x0: zone.start_time,
+        x1: zone.end_time, // Or extend to current time if needed
+        y0: zone.low,
+        y1: zone.high,
+        fillcolor: color,
+        opacity: 0.6,
+        layer: 'below',
+        line: { width: 0 }
+      });
     });
+
+    // Calculate Y-axis range based on candles
+    const prices = candles.flatMap((c: any) => [c.high, c.low]);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const padding = (maxPrice - minPrice) * 0.1; // 10% padding
 
     const layout = {
       title: {
-        text: `${candleData.symbol} - ${candleData.timeframe} (FVG Strategy)`,
+        text: `${selectedSymbol} - ${selectedTimeframe} (FVG Strategy)`,
         font: { color: '#e0e3eb', size: 18, family: 'Inter, sans-serif' },
         x: 0.05,
       },
-      dragmode: 'zoom',
+      dragmode: 'pan',
       showlegend: true,
       legend: {
         orientation: 'h',
@@ -598,20 +232,22 @@ export default function Dashboard() {
         font: { color: '#848e9c' }
       },
       xaxis: {
-        type: 'category',
+        type: 'date',
         rangeslider: { visible: false },
         gridcolor: '#2a2e39',
         color: '#848e9c',
         linecolor: '#2a2e39',
-        nticks: 10, // Limit number of ticks to prevent overcrowding
-        tickangle: -45 // Angle ticks for better readability
+        nticks: 10,
+        tickangle: -45
       },
       yaxis: {
         gridcolor: '#2a2e39',
         color: '#848e9c',
         linecolor: '#2a2e39',
         zerolinecolor: '#2a2e39',
-        side: 'right'
+        side: 'right',
+        range: [minPrice - padding, maxPrice + padding],
+        fixedrange: false
       },
       shapes: shapes,
       plot_bgcolor: '#151a21',
@@ -625,125 +261,151 @@ export default function Dashboard() {
       responsive: true,
       displayModeBar: true,
       modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-      displaylogo: false
+      displaylogo: false,
+      scrollZoom: true
     };
 
     Plotly.newPlot(chartRef.current, traces, layout, config);
+
+    // Attach event listener for infinite scroll
+    const chartDiv = chartRef.current as any;
+    if (chartDiv) {
+      chartDiv.on('plotly_relayout', handleRelayout);
+    }
+  };
+
+  // Handle chart panning (Infinite Scroll)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const handleRelayout = async (event: any) => {
+    // Check if x-axis range changed
+    if (!event['xaxis.range[0]'] || isLoadingHistory) return;
+
+    const startStr = event['xaxis.range[0]'];
+    const startTime = new Date(startStr).getTime();
+
+    // If panned close to the earliest data point
+    if (candleData && candleData.length > 0) {
+      const earliestTime = new Date(candleData[0].time).getTime();
+
+      // If visible range start is before or close to earliest data
+      // Buffer depends on timeframe, simplified here
+      const buffer = 3600000 * 10;
+
+      if (startTime <= earliestTime + buffer) {
+        console.log('Load more history...');
+        setIsLoadingHistory(true);
+
+        const success = await fetchMoreHistory(candleData[0].time);
+
+        if (success) {
+          console.log('History loaded');
+        }
+
+        setIsLoadingHistory(false);
+      }
+    }
   };
 
   const handleTimeframeChange = (tf: string) => {
     setSelectedTimeframe(tf);
-    fetchCandleData(tf);
   };
 
-  if (loading) {
-    return (
-      <div className="dashboard">
-        <div className="loading">
-          <div className="spinner"></div>
-          <p>Loading chart data...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <>
+    <div className="dashboard">
       <Navbar />
-      <div className="dashboard">
-        <header className="dashboard-header">
-          <h1>📊 XAU/USD Candlestick Chart</h1>
-          <div className="symbol-selector">
+
+      {/* Live Indicator */}
+      <LiveIndicator
+        isLive={isLive}
+        isConnected={isConnected}
+        lastUpdate={lastUpdate}
+        onReconnect={reconnect}
+      />
+
+      {/* History Loading Indicator */}
+      {isLoadingHistory && (
+        <div className="history-loading">
+          <div className="spinner-small"></div>
+          <span>Loading history...</span>
+        </div>
+      )}
+
+      <header className="dashboard-header">
+        <h1>📊 XAU/USD Candlestick Chart</h1>
+        <div className="symbol-selector">
+          <select
+            value={selectedSymbol}
+            onChange={(e) => {
+              setSelectedSymbol(e.target.value);
+            }}
+            className="symbol-select"
+          >
+            <option value="GC=F">Gold Futures (GC=F)</option>
+            <option value="XAUUSD=X">Spot Gold (XAUUSD=X)</option>
+          </select>
+        </div>
+      </header>
+
+      <MarketSessions />
+
+      <div className="timeframe-selector" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
             <button
-              className="refresh-btn"
-              onClick={() => fetchCandleData()}
-              title="Refresh Data"
+              key={tf}
+              className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}
+              onClick={() => handleTimeframeChange(tf)}
             >
-              🔄 Refresh
+              {tf.toUpperCase()}
             </button>
-            <select
-              value={selectedSymbol}
-              onChange={(e) => {
-                setSelectedSymbol(e.target.value);
-                fetchCandleData();
-              }}
-              className="symbol-select"
-            >
-              <option value="GC=F">Gold Futures (GC=F)</option>
-              <option value="XAUUSD=X">Spot Gold (XAUUSD=X)</option>
-            </select>
-          </div>
-        </header>
+          ))}
+        </div>
+        <MultiTFIndicator symbol={selectedSymbol} />
+      </div>
 
-        <MarketSessions />
+      <div className="chart-container" style={{ position: 'relative' }}>
+        <div ref={chartRef} className="plotly-chart"></div>
 
-        <div className="timeframe-selector" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {['1m', '5m', '15m', '30m', '1h', '4h', '1d'].map((tf) => (
-              <button
-                key={tf}
-                className={`tf-btn ${selectedTimeframe === tf ? 'active' : ''}`}
-                onClick={() => handleTimeframeChange(tf)}
-              >
-                {tf.toUpperCase()}
-              </button>
+        <div className="key-levels-section">
+          <h3>🎯 Key Support/Resistance Levels</h3>
+          <div className="key-levels-grid">
+            {/* Display first 5 key levels */}
+            {signals.key_levels?.slice(0, 5).map((level: any, idx: number) => (
+              <div key={idx} className="level-card support">
+                <div className="level-header">
+                  <span className="level-type">LEVEL</span>
+                  <span className="level-strength">#{idx + 1}</span>
+                </div>
+                <div className="level-price">{typeof level === 'object' ? level.level : level}</div>
+              </div>
             ))}
           </div>
-          <MultiTFIndicator symbol={selectedSymbol} />
         </div>
 
-        <div className="chart-container" style={{ position: 'relative' }}>
-          <div ref={chartRef} className="plotly-chart"></div>
+        {/* Fundamental Bias Widget - Standalone */}
+        <FundamentalBiasWidget sentimentData={sentimentData} />
 
-          <div className="key-levels-section">
-            <h3>🎯 Key Support/Resistance Levels</h3>
-            <div className="key-levels-grid">
-              {candleData?.key_levels?.slice(0, 5).map((level: any, idx: number) => (
-                <div key={idx} className={`level-card ${level.type}`}>
-                  <div className="level-header">
-                    <span className="level-type">{level.type ? level.type.toUpperCase() : 'N/A'}</span>
-                    <span className="level-strength">Strength: {level.strength || 0}</span>
-                  </div>
-                  <div className="level-price">{level.level || 'N/A'}</div>
-                  <div className="level-details">
-                    <span>High Touches: {level.high_touches || 0}</span>
-                    <span>Low Touches: {level.low_touches || 0}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* DXY & US10Y Combined Widget */}
+        <MarketCorrelationWidget dxyData={dxyData} us10yData={us10yData} />
+
+        <div className="chart-info">
+          <div className="info-card">
+            <span className="info-label">Total Candles:</span>
+            <span className="info-value">{candleData?.length || 0}</span>
           </div>
-
-          {/* Fundamental Bias Widget - Standalone */}
-          <FundamentalBiasWidget sentimentData={sentimentData} />
-
-          {/* DXY & US10Y Combined Widget */}
-          <MarketCorrelationWidget dxyData={dxyData} us10yData={us10yData} />
-
-          <div className="chart-info">
-            <div className="info-card">
-              <span className="info-label">Total Candles:</span>
-              <span className="info-value">{candleData?.total || 0}</span>
-            </div>
-            <div className="info-card">
-              <span className="info-label">Latest Close:</span>
-              <span className="info-value">
-                {candleData?.candles?.[candleData.candles.length - 1]?.close.toFixed(2) || 'N/A'}
-              </span>
-            </div>
-            <div className="info-card">
-              <span className="info-label">RSI:</span>
-              <span className="info-value">
-                {candleData?.candles?.[candleData.candles.length - 1]?.rsi?.toFixed(2) || 'N/A'}
-              </span>
-            </div>
-            <div className="info-card">
-              <span className="info-label">Pivot Points:</span>
-              <span className="info-value">{candleData?.pivot_points?.length || 0}</span>
-            </div>
+          <div className="info-card">
+            <span className="info-label">Latest Close:</span>
+            <span className="info-value">
+              {candleData?.[candleData.length - 1]?.close.toFixed(2) || 'N/A'}
+            </span>
+          </div>
+          <div className="info-card">
+            <span className="info-label">Pivot Points:</span>
+            <span className="info-value">{signals.pivot_points?.length || 0}</span>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

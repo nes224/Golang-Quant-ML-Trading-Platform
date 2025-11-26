@@ -140,6 +140,195 @@
 
 ---
 
+## 🎯 **Signal Update Strategy**
+
+### **Challenge:**
+Signals (Pivot Points, FVG, Buy/Sell) ต้องอัพเดทตาม real-time candles โดยไม่ให้ช้าหรือใช้ทรัพยากรมากเกินไป
+
+### **Solution: Incremental Update (แนะนำ)**
+
+#### **Concept:**
+- **New candle formed** → Recalculate ALL signals
+- **Price update only** → Keep signals, update candle only
+- **Frontend** → Update chart based on message type
+
+#### **Backend Implementation:**
+
+**File:** `trading_api/app/services/signal_tracker.py`
+
+```python
+class SignalTracker:
+    """
+    Track signals and only recalculate when new candle forms
+    """
+    
+    def __init__(self):
+        self.last_candle_count = 0
+        self.cached_signals = {}
+    
+    def should_recalculate(self, candles):
+        """Check if we need to recalculate signals"""
+        return len(candles) > self.last_candle_count
+    
+    def update_signals(self, candles, timeframe):
+        """
+        Update signals if new candle formed
+        
+        Returns:
+            (bool, dict): (signals_updated, signals)
+        """
+        if self.should_recalculate(candles):
+            # New candle! Recalculate all signals
+            self.cached_signals = {
+                "pivot_points": detect_pivot_points(candles, timeframe),
+                "fvg_zones": detect_fvg_zones(candles),
+                "buy_signals": detect_buy_signals(candles),
+                "sell_signals": detect_sell_signals(candles),
+                "key_levels": detect_key_levels(candles)
+            }
+            self.last_candle_count = len(candles)
+            return True, self.cached_signals
+        
+        # No new candle, return cached signals
+        return False, self.cached_signals
+```
+
+**WebSocket Integration:**
+
+```python
+from app.services.signal_tracker import SignalTracker
+
+tracker = SignalTracker()
+
+@app.websocket("/ws/market/{symbol}/{timeframe}")
+async def websocket_market(websocket: WebSocket, symbol: str, timeframe: str):
+    await websocket.accept()
+    
+    try:
+        while True:
+            # Fetch latest candles
+            candles = get_latest_candles(symbol, timeframe, limit=200)
+            
+            # Check if signals need update
+            signals_updated, signals = tracker.update_signals(candles, timeframe)
+            
+            if signals_updated:
+                # New candle! Send full update
+                await websocket.send_json({
+                    "type": "full_update",
+                    "candle": candles[-1],
+                    "signals": signals,
+                    "timestamp": datetime.now().isoformat()
+                })
+            else:
+                # Just price update
+                await websocket.send_json({
+                    "type": "candle_update",
+                    "candle": candles[-1],
+                    "timestamp": datetime.now().isoformat()
+                })
+            
+            await asyncio.sleep(1)
+            
+    except WebSocketDisconnect:
+        print(f"Client disconnected: {symbol}/{timeframe}")
+```
+
+#### **Frontend Handling:**
+
+```typescript
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    
+    if (data.type === 'full_update') {
+        // New candle! Update everything
+        console.log('📊 New candle + signals update');
+        
+        // Update candles
+        setCandleData(prev => {
+            const updated = [...prev];
+            if (updated[updated.length - 1]?.time !== data.candle.time) {
+                // New candle
+                updated.push(data.candle);
+            } else {
+                // Update last candle
+                updated[updated.length - 1] = data.candle;
+            }
+            return updated;
+        });
+        
+        // Update signals
+        setSignals(data.signals);
+        
+        // Re-render chart
+        renderChart();
+        
+    } else if (data.type === 'candle_update') {
+        // Just price update
+        console.log('💹 Price update only');
+        
+        // Update last candle only
+        setCandleData(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = data.candle;
+            return updated;
+        });
+        
+        // Re-render chart (signals stay the same)
+        renderChart();
+    }
+};
+```
+
+### **Performance Comparison:**
+
+| Method | CPU Usage | Bandwidth | Latency | Complexity |
+|--------|-----------|-----------|---------|------------|
+| **Full Recalc** (every second) | 🔴 High | 🔴 High | 🟡 Medium | 🟢 Low |
+| **Incremental** (on new candle) | 🟢 Low | 🟢 Low | 🟢 Low | 🟡 Medium |
+| **Hybrid** (partial update) | 🟢 Very Low | 🟢 Very Low | 🟢 Very Low | 🔴 High |
+
+### **Why Incremental?**
+
+**✅ Pros:**
+- CPU usage reduced by ~90% (คำนวณเฉพาะเมื่อมีแท่งใหม่)
+- Bandwidth reduced by ~80% (ส่งเฉพาะที่เปลี่ยน)
+- Signals ถูกต้องเสมอ
+- ง่ายต่อการ debug
+
+**⚠️ Cons:**
+- ซับซ้อนกว่า full recalculation เล็กน้อย
+- ต้อง track state
+
+### **Example Timeline:**
+
+```
+00:00 - New 1h candle forms
+  → Recalculate ALL signals
+  → Send: full_update + signals
+  
+00:01 - Price update (same candle)
+  → Keep cached signals
+  → Send: candle_update only
+  
+00:02 - Price update (same candle)
+  → Keep cached signals
+  → Send: candle_update only
+  
+...
+
+01:00 - New 1h candle forms
+  → Recalculate ALL signals
+  → Send: full_update + signals
+```
+
+**Result:**
+- Recalculate: 1 time/hour (instead of 3600 times/hour)
+- **99.97% reduction in signal calculations!** 🚀
+
+---
+
+
 ## 🛠️ **Technical Implementation**
 
 ### **Phase 1: WebSocket Real-time Updates**

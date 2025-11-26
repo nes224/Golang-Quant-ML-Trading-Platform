@@ -35,9 +35,10 @@ async def broadcast_market_data():
         import MetaTrader5 as mt5
         selected = mt5.symbol_select(symbol, True)
         if not selected:
-            variations = ["GOLD", "XAUUSDm", "XAUUSD.", "XAUUSD+", "XAUUSD_i"]
+            variations = ["XAUUSDc", "GOLD", "XAUUSDm", "XAUUSD.", "XAUUSD+", "XAUUSD_i", "XAUUSDcent"]
             for var in variations:
                 if mt5.symbol_select(var, True):
+                    print(f"✅ Found alternative symbol for streaming: {var}")
                     symbol = var
                     selected = True
                     break

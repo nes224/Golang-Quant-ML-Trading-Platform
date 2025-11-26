@@ -230,3 +230,89 @@ def get_candlestick_data(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/candlestick/{timeframe}/history")
+def get_historical_data(
+    timeframe: str,
+    symbol: str = Query(..., description="Trading symbol"),
+    before: str = Query(..., description="Fetch candles before this timestamp (ISO)"),
+    limit: int = Query(default=100, description="Number of candles to return")
+):
+    """
+    Fetch historical data for infinite scroll.
+    
+    Calculates appropriate date range based on 'before' timestamp and limit.
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        # Parse 'before' timestamp
+        try:
+            before_dt = datetime.fromisoformat(before.replace('Z', '+00:00')).replace(tzinfo=None)
+        except ValueError:
+            # Try parsing with other formats if ISO fails
+            before_dt = pd.to_datetime(before).to_pydatetime().replace(tzinfo=None)
+            
+        # Estimate start date based on timeframe and limit
+        # We fetch a bit more to ensure we have enough data
+        multiplier = 1.5
+        
+        if timeframe == "1m": minutes = limit * 1 * multiplier
+        elif timeframe == "5m": minutes = limit * 5 * multiplier
+        elif timeframe == "15m": minutes = limit * 15 * multiplier
+        elif timeframe == "30m": minutes = limit * 30 * multiplier
+        elif timeframe == "1h": minutes = limit * 60 * multiplier
+        elif timeframe == "4h": minutes = limit * 240 * multiplier
+        elif timeframe == "1d": minutes = limit * 1440 * multiplier
+        else: minutes = limit * 60 * multiplier # Default to 1h
+        
+        start_dt = before_dt - timedelta(minutes=minutes)
+        
+        # Format dates for fetch_data
+        start_str = start_dt.strftime("%Y-%m-%d")
+        end_str = (before_dt + timedelta(days=1)).strftime("%Y-%m-%d") # Add buffer for end
+        
+        print(f"[HISTORY] Fetching {symbol} {timeframe} from {start_str} to {before}")
+        
+        # Reuse get_candlestick_data logic
+        # We pass a larger limit to get_candlestick_data and then filter here
+        data = get_candlestick_data(
+            timeframe=timeframe,
+            symbol=symbol,
+            limit=limit * 2, # Fetch more to filter
+            start=start_str,
+            end=end_str
+        )
+        
+        # Filter candles strictly before 'before' timestamp
+        all_candles = data['candles']
+        filtered_candles = [c for c in all_candles if pd.to_datetime(c['time']).replace(tzinfo=None) < before_dt]
+        
+        # Take last 'limit' candles
+        result_candles = filtered_candles[-limit:] if len(filtered_candles) > limit else filtered_candles
+        
+        # Update data with filtered candles
+        data['candles'] = result_candles
+        data['total'] = len(result_candles)
+        
+        # Filter signals to match new candle range
+        if result_candles:
+            start_time = pd.to_datetime(result_candles[0]['time'])
+            end_time = pd.to_datetime(result_candles[-1]['time'])
+            
+            data['pivot_points'] = [p for p in data['pivot_points'] if start_time <= pd.to_datetime(p['time']) <= end_time]
+            data['fvg_zones'] = [z for z in data['fvg_zones'] if start_time <= pd.to_datetime(z['time']) <= end_time]
+            data['break_signals'] = [s for s in data['break_signals'] if start_time <= pd.to_datetime(s['time']) <= end_time]
+        else:
+            data['pivot_points'] = []
+            data['fvg_zones'] = []
+            data['break_signals'] = []
+            
+        return data
+        
+    except Exception as e:
+        print(f"[HISTORY] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

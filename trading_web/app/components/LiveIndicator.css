@@ -1,0 +1,116 @@
+/* LiveIndicator Styles */
+
+.live-indicator-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+/* Live State */
+.live-indicator.live {
+  background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%);
+  color: #000;
+}
+
+.live-indicator.live .pulse {
+  width: 8px;
+  height: 8px;
+  background: #ff0000;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
+/* Paused State */
+.live-indicator.paused {
+  background: linear-gradient(135deg, #ffa500 0%, #ff8c00 100%);
+  color: #000;
+}
+
+.live-indicator.paused .icon {
+  font-size: 16px;
+}
+
+/* Disconnected State */
+.live-indicator.disconnected {
+  background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+  color: #fff;
+}
+
+.live-indicator.disconnected .icon {
+  font-size: 16px;
+}
+
+/* Text */
+.live-indicator .text {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.live-indicator .time {
+  font-size: 12px;
+  opacity: 0.8;
+  font-family: 'Courier New', monospace;
+}
+
+/* Reconnect Button */
+.reconnect-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reconnect-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.reconnect-btn:active {
+  transform: translateY(0);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .live-indicator-container {
+    top: 10px;
+    right: 10px;
+  }
+
+  .live-indicator {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .live-indicator .time {
+    display: none;
+  }
+}

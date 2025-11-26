@@ -1,10 +1,10 @@
 {
   "os": "windows",
-  "last_export": "2025-11-25T21:23:51.383143",
+  "last_export": "2025-11-26T19:13:11.266407",
   "last_import": "2025-11-25T21:01:05.187305",
   "versions": {
-    "market_data": "0.5",
-    "checklist_monthly": "0.5"
+    "market_data": "0.12",
+    "checklist_monthly": "0.12"
   },
   "imported_versions": {}
 }

@@ -106,10 +106,10 @@ def fetch_data_mt5(symbol="XAUUSD", period="2mo", interval="1d"):
     if not selected:
         # Try common variations for Gold
         if symbol == "XAUUSD":
-            variations = ["GOLD", "XAUUSDm", "XAUUSD.", "XAUUSD+", "XAUUSD_i"]
+            variations = ["XAUUSDc", "GOLD", "XAUUSDm", "XAUUSD.", "XAUUSD+", "XAUUSD_i", "XAUUSDcent"]
             for var in variations:
                 if mt5.symbol_select(var, True):
-                    # print(f"Found alternative symbol: {var}") # Reduce log spam
+                    print(f"✅ Found alternative symbol: {var}")
                     symbol = var
                     selected = True
                     break
