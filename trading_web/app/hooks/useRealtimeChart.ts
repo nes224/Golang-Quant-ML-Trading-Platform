@@ -71,8 +71,7 @@ export const useRealtimeChart = (
       wsRef.current.close();
     }
 
-    const encodedSymbol = encodeURIComponent(symbol);
-    const wsUrl = `ws://localhost:8000/ws/market/${encodedSymbol}/${timeframe}`;
+    const wsUrl = `ws://localhost:8000/ws/market/${symbol}/${timeframe}`;
     console.log(`[WS] Connecting to ${wsUrl}`);
 
     const ws = new WebSocket(wsUrl);

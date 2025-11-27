@@ -15,7 +15,7 @@ import './components/HistoryLoading.css';
 declare const Plotly: any;
 
 export default function Dashboard() {
-  const [selectedSymbol, setSelectedSymbol] = useState('GC=F');
+  const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
   const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
   const [dxyData, setDxyData] = useState<any>(null);
   const [us10yData, setUs10yData] = useState<any>(null);
