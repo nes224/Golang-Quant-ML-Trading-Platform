@@ -66,108 +66,57 @@ export const useRealtimeChart = (
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connect = useCallback(() => {
-    // Close existing connection
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-
-    const wsUrl = `ws://localhost:8000/ws/market/${symbol}/${timeframe}`;
-    console.log(`[WS] Connecting to ${wsUrl}`);
-
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log(`[WS] ✅ Connected: ${symbol}/${timeframe}`);
-      setIsConnected(true);
-      setIsLive(true);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setLastUpdate(data.timestamp);
-
-        if (data.type === 'full_update') {
-          // New candle! Update everything
-          console.log(`[WS] 📊 Full update: ${data.timestamp}`);
-
-          // Update candles
-          setCandleData(prev => {
-            const updated = [...prev];
-            const lastCandle = updated[updated.length - 1];
-
-            if (lastCandle && lastCandle.time === data.candle.time) {
-              // Update existing candle
-              updated[updated.length - 1] = data.candle;
-            } else {
-              // New candle
-              updated.push(data.candle);
-
-              // Limit to 500 candles in memory
-              if (updated.length > 500) {
-                return updated.slice(-500);
-              }
-            }
-
-            return updated;
-          });
-
-          // Update signals
-          setSignals(data.signals);
-
-        } else if (data.type === 'candle_update') {
-          // Just price update
-          console.log(`[WS] 💹 Price update: ${data.timestamp}`);
-
-          // Update last candle only
-          setCandleData(prev => {
-            if (prev.length === 0) return [data.candle];
-
-            const updated = [...prev];
-            updated[updated.length - 1] = data.candle;
-            return updated;
-          });
-        }
-      } catch (error) {
-        console.error('[WS] Error parsing message:', error);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('[WS] ❌ Error:', error);
-      setIsConnected(false);
-    };
-
-    ws.onclose = () => {
-      console.log('[WS] 🔌 Disconnected');
-      setIsConnected(false);
-      setIsLive(false);
-
-      // Auto-reconnect after 3 seconds
-      reconnectTimeoutRef.current = setTimeout(() => {
-        console.log('[WS] 🔄 Reconnecting...');
-        connect();
-      }, 3000);
-    };
-
-    wsRef.current = ws;
+    // No WebSocket - just use polling
+    console.log(`[POLLING] Starting auto-refresh for ${symbol}/${timeframe}`);
+    setIsConnected(true);
+    setIsLive(true);
   }, [symbol, timeframe]);
 
   const reconnect = useCallback(() => {
-    console.log('[WS] Manual reconnect triggered');
-    connect();
-  }, [connect]);
+    console.log('[POLLING] Manual refresh triggered');
+    fetchInitialData();
+  }, []);
 
   // Fetch historical data
   const fetchMoreHistory = useCallback(async (before: string) => {
     try {
       console.log(`[HISTORY] Fetching before ${before}`);
+      
+      // Calculate date range (fetch 100 candles before the given time)
+      const beforeDate = new Date(before);
+      const endDate = beforeDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      // Calculate start date based on timeframe
+      let daysBack = 7; // default
+      switch (timeframe) {
+        case '1m': daysBack = 1; break;
+        case '5m': daysBack = 2; break;
+        case '15m': daysBack = 3; break;
+        case '30m': daysBack = 5; break;
+        case '1h': daysBack = 7; break;
+        case '4h': daysBack = 30; break;
+        case '1d': daysBack = 100; break;
+      }
+      
+      const startDate = new Date(beforeDate);
+      startDate.setDate(startDate.getDate() - daysBack);
+      const startStr = startDate.toISOString().split('T')[0];
+      
       const response = await fetch(
-        `http://localhost:8000/candlestick/${timeframe}/history?symbol=${symbol}&before=${before}&limit=100`
+        `http://localhost:8000/api/v1/candlestick/${timeframe}?symbol=${symbol}&start=${startStr}&end=${endDate}&limit=100`
       );
+      
+      if (!response.ok) {
+        console.error(`[HISTORY] API error: ${response.status}`);
+        return false;
+      }
+      
       const data = await response.json();
 
-      if (data.candles.length === 0) return false;
+      if (!data || !data.candles || data.candles.length === 0) {
+        console.log('[HISTORY] No more data available');
+        return false;
+      }
 
       // Merge candles (prepend)
       setCandleData(prev => {
@@ -180,10 +129,10 @@ export const useRealtimeChart = (
 
       // Merge signals
       setSignals(prev => ({
-        pivot_points: [...data.pivot_points, ...prev.pivot_points],
-        fvg_zones: [...data.fvg_zones, ...prev.fvg_zones],
-        break_signals: [...data.break_signals, ...prev.break_signals],
-        key_levels: [...new Set([...data.key_levels, ...prev.key_levels])]
+        pivot_points: [...(data.pivot_points || []), ...prev.pivot_points],
+        fvg_zones: [...(data.fvg_zones || []), ...prev.fvg_zones],
+        break_signals: [...(data.break_signals || []), ...prev.break_signals],
+        key_levels: [...new Set([...(data.key_levels || []), ...prev.key_levels])]
       }));
 
       return true;
@@ -197,21 +146,18 @@ export const useRealtimeChart = (
   const fetchInitialData = useCallback(async () => {
     try {
       // Determine limit based on timeframe
-      let limit = 100;
-      switch (timeframe) {
-        case '1m': limit = 200; break;
-        case '5m': limit = 100; break;
-        case '15m': limit = 75; break;
-        case '30m': limit = 45; break;
-        case '1h': limit = 30; break;
-        case '4h': limit = 22; break;
-        case '1d': limit = 15; break;
-        default: limit = 100;
-      }
+      // Determine limit based on timeframe - User requested ~200 candles
+      let limit = 200;
+      
+      // We can still adjust slightly if needed, but keeping it consistent is better
+      // switch (timeframe) {
+      //   case '1m': limit = 200; break;
+      //   default: limit = 200;
+      // }
 
       console.log(`[INITIAL] Fetching ${limit} candles for ${timeframe}`);
       const response = await fetch(
-        `http://localhost:8000/candlestick/${timeframe}?symbol=${symbol}&limit=${limit}`
+        `http://localhost:8000/api/v1/candlestick/${timeframe}?symbol=${symbol}&limit=${limit}`
       );
       const data = await response.json();
 
@@ -230,21 +176,25 @@ export const useRealtimeChart = (
     }
   }, [symbol, timeframe]);
 
-  // Connect on mount and when symbol/timeframe changes
+  // Polling: Fetch data on mount and every 10 seconds
   useEffect(() => {
-    fetchInitialData(); // Fetch history first
-    connect(); // Then start real-time updates
+    fetchInitialData(); // Initial fetch
+    connect(); // Set connected state
+
+    // Auto-refresh every 10 seconds
+    const interval = setInterval(() => {
+      console.log('[POLLING] Auto-refresh...');
+      fetchInitialData();
+    }, 10000);
 
     // Cleanup on unmount
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      clearInterval(interval);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [connect, fetchInitialData]);
+  }, [symbol, timeframe, fetchInitialData, connect]);
 
   return {
     candleData,

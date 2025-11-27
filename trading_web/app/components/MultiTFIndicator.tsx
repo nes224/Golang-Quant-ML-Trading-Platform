@@ -26,7 +26,7 @@ export default function MultiTFIndicator({ symbol }: MultiTFIndicatorProps) {
 
     const fetchTrends = async () => {
         try {
-            const response = await fetch(`http://localhost:8000/multi-tf-trend?symbol=${symbol}`);
+            const response = await fetch(`http://localhost:8000/api/v1/multi-tf-trend?symbol=${symbol}`);
             const data = await response.json();
             setTrends(data);
             setLoading(false);

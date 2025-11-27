@@ -62,7 +62,7 @@ export default function NewsPage() {
     const fetchNews = async () => {
         try {
             setLoading(true);
-            let url = 'http://localhost:8000/news/search?limit=100';
+            let url = 'http://localhost:8000/api/v1/news/search?limit=100';
 
             if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
             if (sentimentFilter) url += `&sentiment=${sentimentFilter}`;
@@ -94,7 +94,7 @@ export default function NewsPage() {
                 impact_score: formData.impact_score ? parseInt(formData.impact_score) : null
             };
 
-            const response = await fetch('http://localhost:8000/news', {
+            const response = await fetch('http://localhost:8000/api/v1/news', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

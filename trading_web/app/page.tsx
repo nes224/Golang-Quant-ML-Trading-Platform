@@ -15,7 +15,7 @@ import './components/HistoryLoading.css';
 declare const Plotly: any;
 
 export default function Dashboard() {
-  const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
+  const [selectedSymbol, setSelectedSymbol] = useState('GC=F');
   const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
   const [dxyData, setDxyData] = useState<any>(null);
   const [us10yData, setUs10yData] = useState<any>(null);
@@ -36,7 +36,7 @@ export default function Dashboard() {
   // Fetch DXY Data
   const fetchDXYData = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/v1/market/quote/DX-Y.NYB');
+      const response = await fetch('http://localhost:8000/api/v1/dxy');
       const data = await response.json();
       setDxyData(data);
     } catch (error) {
@@ -47,7 +47,7 @@ export default function Dashboard() {
   // Fetch US10Y Data
   const fetchUS10YData = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/v1/market/quote/^TNX');
+      const response = await fetch('http://localhost:8000/api/v1/us10y');
       const data = await response.json();
       setUs10yData(data);
     } catch (error) {

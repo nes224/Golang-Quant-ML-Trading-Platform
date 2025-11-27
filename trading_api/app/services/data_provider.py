@@ -24,6 +24,7 @@ def fetch_data_yahoo(symbol="GC=F", period="2mo", interval="1d", start_date=None
         "5m": "60d",     # 5-minute data: max 60 days
         "15m": "60d",    # 15-minute data: max 60 days
         "30m": "60d",    # 30-minute data: max 60 days
+        "1h": "2y",      # 1-hour data: max 2 years (approx 730 days)
     }
     
     # Apply Yahoo limits if interval has restrictions
@@ -457,7 +458,24 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True, start_
                         new_df = pd.DataFrame()
                     else:
                         # yfinance requires start date string
-                        new_df = yf.download(symbol, start=str(fetch_start), interval=interval, progress=False, auto_adjust=True)
+                        # Enforce Yahoo Finance limits to prevent errors
+                        max_days_back = 700 # Safer buffer (730 days is strict limit)
+                        if interval == "1m":
+                            max_days_back = 5 # Safe buffer for 7d
+                        elif interval in ["2m", "5m", "15m", "30m", "90m"]:
+                            max_days_back = 55 # Safe buffer for 60d
+                        
+                        min_start_date = (datetime.now() - timedelta(days=max_days_back)).date()
+                        
+                        if fetch_start < min_start_date:
+                            # print(f"[SYNC] Adjusting start date from {fetch_start} to {min_start_date} due to Yahoo limits")
+                            fetch_start = min_start_date
+
+                        fetch_interval = interval
+                        if interval == "4h":
+                            fetch_interval = "1h"
+
+                        new_df = yf.download(symbol, start=str(fetch_start), interval=fetch_interval, progress=False, auto_adjust=True)
                     
                     # Handle MultiIndex
                     if isinstance(new_df.columns, pd.MultiIndex):
@@ -472,8 +490,17 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True, start_
                         last_timestamp = last_timestamp.tz_localize(None)
 
                     # Resample if needed (e.g. 4h)
-                    if interval == "4h":
-                        pass 
+                    if interval == "4h" and not new_df.empty:
+                        agg_dict = {
+                            'Open': 'first',
+                            'High': 'max',
+                            'Low': 'min',
+                            'Close': 'last',
+                            'Volume': 'sum'
+                        }
+                        # Only resample if we have the columns
+                        if all(col in new_df.columns for col in agg_dict.keys()):
+                            new_df = new_df.resample('4h').agg(agg_dict).dropna()
                         
                     if not new_df.empty:
                         # Filter out data we already have (keep only > last_timestamp)
@@ -485,9 +512,15 @@ def fetch_data(symbol="GC=F", period="1y", interval="1d", use_cache=True, start_
                             pass
                 except Exception as e:
                     # Catch specific Yahoo errors like "start date cannot be after end date"
-                    if "start date cannot be after end date" in str(e) or "possibly delisted" in str(e):
-                        # This usually means we are up to date
+                    error_str = str(e)
+                    if "start date cannot be after end date" in error_str:
                         pass
+                    elif "possibly delisted" in error_str:
+                        # If we are fetching today's data and it fails, it's likely just not ready/available yet
+                        if fetch_start >= datetime.now().date():
+                            pass
+                        else:
+                            print(f"[SYNC WARNING] {e}")
                     else:
                         print(f"[SYNC ERROR] {e}")
             else:

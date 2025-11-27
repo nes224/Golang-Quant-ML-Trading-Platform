@@ -32,7 +32,7 @@ export default function ChecklistPage() {
 
     const fetchData = async () => {
         try {
-            const response = await fetch(`http://localhost:8000/checklist?month=${selectedMonth}`);
+            const response = await fetch(`http://localhost:8000/api/v1/checklist?month=${selectedMonth}`);
             const result = await response.json();
             setData(result);
             setLoading(false);
@@ -54,7 +54,7 @@ export default function ChecklistPage() {
 
     const updateCount = async (item: string, change: number) => {
         try {
-            const response = await fetch('http://localhost:8000/checklist/update', {
+            const response = await fetch('http://localhost:8000/api/v1/checklist/update', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

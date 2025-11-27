@@ -38,7 +38,7 @@ export default function JournalPage() {
 
     const fetchEntries = async () => {
         try {
-            const response = await fetch('http://localhost:8000/journal');
+            const response = await fetch('http://localhost:8000/api/v1/journal');
             const data = await response.json();
             // Ensure data is an array
             if (Array.isArray(data)) {
@@ -103,7 +103,7 @@ export default function JournalPage() {
         };
 
         try {
-            const response = await fetch('http://localhost:8000/journal', {
+            const response = await fetch('http://localhost:8000/api/v1/journal', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -123,7 +123,7 @@ export default function JournalPage() {
     const handleDelete = async (date: string) => {
         if (confirm('Are you sure you want to delete this entry?')) {
             try {
-                await fetch(`http://localhost:8000/journal/${date}`, {
+                await fetch(`http://localhost:8000/api/v1/journal/${date}`, {
                     method: 'DELETE',
                 });
                 fetchEntries();
