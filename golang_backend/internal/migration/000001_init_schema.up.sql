@@ -50,3 +50,19 @@ CREATE TABLE "market_data" (
     "volume" double precision NOT NULL,
     "created_datetime" timestamp
 );
+
+CREATE TABLE "news_analysis" (
+    "id" bigserial PRIMARY KEY,
+    "date" varchar NOT NULL,
+    "time" varchar NOT NULL,
+    "title" varchar NOT NULL,
+    "content" varchar,
+    "url" varchar,
+    "ai_analysis" varchar,
+    "sentiment" varchar,
+    "impact_score" int DEFAULT 0,
+    "tags" varchar,
+    "type" varchar,
+    "created_datetime" timestamp,
+    "updated_datetime" timestamp NULL
+);

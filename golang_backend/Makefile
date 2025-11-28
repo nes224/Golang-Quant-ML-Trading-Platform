@@ -11,16 +11,16 @@ dropdb:
 	docker exec -it postgres14 dropdb abs_db
 
 migrateup:
-	migrate -path golang_backend/internal/migration -database "$(DB_URL)" -verbose up
+	migrate -path internal/migration -database "$(DB_URL)" -verbose up
 
 migrateup1:
-	migrate -path golang_backend/internal/migration -database "$(DB_URL)" -verbose up 1
+	migrate -path internal/migration -database "$(DB_URL)" -verbose up 1
 
 migratedown:
-	migrate -path golang_backend/internal/migration -database "$(DB_URL)" -verbose down
+	migrate -path internal/migration -database "$(DB_URL)" -verbose down
 
 migratedown1:
-	migrate -path golang_backend/internal/migration -database "$(DB_URL)" -verbose down 1
+	migrate -path internal/migration -database "$(DB_URL)" -verbose down 1
 
 new_migration:
 	migrate create -ext sql -dir golang_backend/internal/migration -seq $(name)
