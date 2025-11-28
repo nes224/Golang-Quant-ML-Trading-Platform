@@ -1,0 +1,7 @@
+tmp
+app.env
+reportFile/*
+images/*
+private_key.pem 
+anniversary.sh
+.claude
